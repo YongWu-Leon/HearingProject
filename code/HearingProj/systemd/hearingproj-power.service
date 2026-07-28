@@ -1,0 +1,21 @@
+[Unit]
+Description=HearingProj Power / Network / Watchdog (A / B keys, hotspot watchdog)
+After=NetworkManager.service
+Wants=NetworkManager.service
+
+[Service]
+Type=simple
+# Runs as root (network switching and shutdown require it). The code lives in the
+# run (test) user's home directory.
+# Node 1: use /home/pi-node01; node 2: /home/pi-node02; node 3: /home/pi-node03.
+# (This service is root, so %h cannot be used -- %h resolves to /root for root --
+#  hence absolute paths here, to be edited per node.)
+User=root
+WorkingDirectory=/home/pi-node01/HearingProj
+ExecStart=/usr/bin/python3 /home/pi-node01/HearingProj/power_button.py
+Environment=PYTHONUNBUFFERED=1
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

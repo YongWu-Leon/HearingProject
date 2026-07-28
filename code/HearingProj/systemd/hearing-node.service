@@ -1,0 +1,25 @@
+[Unit]
+Description=Hearing test node (WebSocket client + audio + X/Y buttons)
+# The node dials the default gateway, so the WiFi link to the phone's hotspot must
+# be up first. It reconnects on its own with exponential backoff if it is not, so
+# this is an ordering preference rather than a hard requirement.
+After=network-online.target sound.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Node 1: User=pi-node01; node 2: pi-node02; node 3: pi-node03.
+# %h resolves to the User= home above, so WorkingDirectory/ExecStart need no
+# change per node -- and config.py derives NODE_ID from that same path.
+# Note: the run user must be in the gpio and audio groups, or the X/Y buttons or
+# the sound card will be inaccessible.
+User=pi-node01
+WorkingDirectory=%h/HearingProj
+ExecStart=/usr/bin/python3 %h/HearingProj/node_client.py
+# Unbuffered, so journalctl shows the node's prints as they happen.
+Environment=PYTHONUNBUFFERED=1
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

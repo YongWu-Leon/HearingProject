@@ -1,0 +1,160 @@
+import '../models/node_session.dart';
+
+/// Turns one node's message stream into a stored test record.
+///
+/// Kept apart from the socket plumbing in WsServer for two reasons: this is the
+/// part with actual bookkeeping in it, and separating it means it can be tested
+/// without opening a WebSocket or a database.
+///
+/// The bookkeeping it does: the node reports each level as it CLOSES, not as it
+/// opens. A volume_changed message says "the level that just ended was X dB,
+/// held with Y seconds left on the countdown, and the subject has now moved to
+/// Z dB". So every message finalises the previous row and opens the next one.
+/// tone_done finalises the last row -- always with 0 s left, because that is the
+/// countdown expiring, which is what makes its level the threshold.
+class TestAssembler {
+  TestRecord? _pending;
+  final List<TestStep> _steps = [];
+
+  bool get active => _pending != null;
+  int? get seq => _pending?.seq;
+  List<TestStep> get steps => List.unmodifiable(_steps);
+
+  /// Called when the app sends play_tone.
+  void begin({
+    required String nodeId,
+    required int seq,
+    required double freqHz,
+    required String ear,
+  }) {
+    _pending = TestRecord(
+      nodeId: nodeId,
+      seq: seq,
+      freqHz: freqHz,
+      ear: ear,
+      startTs: DateTime.now(),
+    );
+    _steps.clear();
+  }
+
+  /// The node reports the level it actually opened with, which is authoritative
+  /// over what we asked for (the node clamps to its own dB floor/ceiling).
+  void onToneStarted({required int? seq, required double? db}) {
+    if (!_matches(seq) || db == null) return;
+    _steps
+      ..clear()
+      ..add(TestStep(
+        index: 0,
+        db: db,
+        linear: 0,
+        from: StepFrom.init,
+        remainingS: 0,
+        ts: DateTime.now(),
+      ));
+  }
+
+  /// The subject pressed X or Y.
+  void onVolumeChanged({
+    required int? seq,
+    required double? segDb,
+    required String? segFrom,
+    required double segRemainingS,
+    required double? currentDb,
+    required double? currentLinear,
+    required String? button,
+  }) {
+    if (!_matches(seq) || segDb == null || currentDb == null) return;
+
+    if (_steps.isEmpty) {
+      // tone_started never arrived; seg_from still tells us how that first level
+      // was reached, which for the first press is always 'init'.
+      _steps.add(TestStep(
+        index: 0,
+        db: segDb,
+        linear: 0,
+        from: stepFromWire(segFrom),
+        remainingS: segRemainingS,
+        ts: DateTime.now(),
+      ));
+    } else {
+      // Close the open row with the node's account of it.
+      final open = _steps.last;
+      _steps[_steps.length - 1] = TestStep(
+        index: open.index,
+        db: segDb,
+        linear: open.linear,
+        from: open.from,
+        remainingS: segRemainingS,
+        ts: open.ts,
+      );
+    }
+
+    // Open the row for the level they just moved to. Its own remaining_s stays 0
+    // until the next press (or tone_done) closes it.
+    _steps.add(TestStep(
+      index: _steps.length,
+      db: currentDb,
+      linear: currentLinear ?? 0,
+      from: button == 'X' ? StepFrom.down : StepFrom.up,
+      remainingS: 0,
+      ts: DateTime.now(),
+    ));
+  }
+
+  /// The tone ended. Returns the finished record to store, or null if this
+  /// message belongs to a test we are not tracking.
+  TestRecord? onToneDone({
+    required int? seq,
+    required String reason,
+    required double? finalDb,
+    required double? finalLinear,
+    required double segRemainingS,
+  }) {
+    if (!_matches(seq)) return null;
+
+    if (_steps.isNotEmpty && finalDb != null) {
+      final open = _steps.last;
+      _steps[_steps.length - 1] = TestStep(
+        index: open.index,
+        db: finalDb,
+        linear: finalLinear ?? open.linear,
+        from: open.from,
+        remainingS: segRemainingS,
+        ts: open.ts,
+      );
+    }
+    // Only a countdown that actually expired yields a threshold. A tone the
+    // operator cut short says nothing about where the subject would have settled.
+    return _finish(reason, reason == 'completed' ? finalDb : null);
+  }
+
+  /// The link dropped or the safety-net timeout fired. Whatever the subject had
+  /// reached is still worth keeping, but it is not a threshold.
+  TestRecord? abandon(String reason) {
+    if (!active) return null;
+    return _finish(reason, null);
+  }
+
+  TestRecord? _finish(String reason, double? thresholdDb) {
+    final pending = _pending;
+    if (pending == null) return null;
+    final record = pending.copyWith(
+      endTs: DateTime.now(),
+      reason: reason,
+      thresholdDb: thresholdDb,
+      steps: List.of(_steps),
+    );
+    _pending = null;
+    _steps.clear();
+    return record;
+  }
+
+  void reset() {
+    _pending = null;
+    _steps.clear();
+  }
+
+  /// Guards against a late message from a previous test landing in the current
+  /// one -- the reason seq is generated by the phone and echoed by the node.
+  bool _matches(int? seq) => _pending != null && seq != null && _pending!.seq == seq;
+}

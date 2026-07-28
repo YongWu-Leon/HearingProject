@@ -1,0 +1,12 @@
+# Normalize text line endings to avoid CRLF/LF churn across Windows/Linux.
+* text=auto
+
+# Shell scripts and systemd units run on the Raspberry Pi -- force LF.
+*.sh          text eol=lf
+*.service     text eol=lf
+*.py          text eol=lf
+
+# Binary files: no line-ending conversion.
+*.png         binary
+*.jpg         binary
+*.pdf         binary

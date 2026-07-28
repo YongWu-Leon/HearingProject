@@ -1,0 +1,50 @@
+# ============================================================
+#  HearingProj — .gitignore
+#  Only build artifacts, dependencies and OS junk. Nothing sensitive
+#  lives in this tree: private notes and dev logs are kept outside the repo.
+# ============================================================
+
+# ---------- Flutter / Dart (large, regenerable) ----------
+**/build/
+**/.dart_tool/
+**/.flutter-plugins
+**/.flutter-plugins-dependencies
+**/.packages
+**/.pub-cache/
+**/.pub/
+**/generated_plugin_registrant.*
+**/.metadata
+
+# ---------- Android ----------
+**/.gradle/
+**/local.properties
+# signing keys must never be committed
+**/key.properties
+**/*.jks
+**/*.keystore
+**/google-services.json
+
+# ---------- iOS / macOS ----------
+**/Pods/
+**/.symlinks/
+**/xcuserdata/
+
+# ---------- IDE ----------
+**/.idea/
+**/*.iml
+.vscode/
+
+# ---------- Python (node firmware) ----------
+**/__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# ---------- Runtime output ----------
+hearing_debug.csv
+results.csv
+
+# ---------- OS junk ----------
+.DS_Store
+Thumbs.db
+desktop.ini

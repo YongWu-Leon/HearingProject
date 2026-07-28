@@ -1,0 +1,39 @@
+name: hearing_client
+description: Hearing Screening Client App -- WebSocket hub for Raspberry Pi test nodes
+
+publish_to: 'none'
+
+version: 2.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.6
+
+  # The phone is now the hub: it runs the WebSocket SERVER that every node dials.
+  # (The old http client is gone -- there is no HTTP control plane any more.)
+  shelf: ^1.4.1
+  shelf_web_socket: ^2.0.0
+  web_socket_channel: ^3.0.1
+
+  # Authoritative result storage lives here, on the phone.
+  sqflite: ^2.3.3
+  path: ^1.9.0
+  path_provider: ^2.1.4
+  share_plus: ^10.0.2
+
+  # Keeps the WebSocket server alive when the app is backgrounded or the screen
+  # locks; without it Android tears down the listening socket and every node
+  # silently drops off.
+  flutter_foreground_task: ^8.10.4
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+
+flutter:
+  uses-material-design: true
