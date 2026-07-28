@@ -6,6 +6,11 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE"/>
 
+    <!-- Ambient-noise monitor: samples the microphone to warn when the room is
+         too loud for a valid screening. Foreground use only (not in the
+         background service), so no FOREGROUND_SERVICE_MICROPHONE type is needed. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO"/>
+
     <!-- Foreground service keeps the listening socket alive when the app is
          backgrounded or the screen locks. Without it Android tears the socket
          down and every node silently drops off. -->

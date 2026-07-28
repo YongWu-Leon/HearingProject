@@ -4,6 +4,7 @@ import 'package:share_plus/share_plus.dart';
 import '../models/node_session.dart';
 import '../services/db.dart';
 import '../theme.dart';
+import 'audiogram_screen.dart';
 
 /// Saved test records, read from the phone's database.
 ///
@@ -111,6 +112,15 @@ class _RecordsScreenState extends State<RecordsScreen> {
             icon: const Icon(Icons.refresh),
             tooltip: 'Reload',
             onPressed: _load,
+          ),
+          IconButton(
+            icon: const Icon(Icons.show_chart),
+            tooltip: 'Audiogram',
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                  builder: (_) => AudiogramScreen(nodeId: widget.nodeId)),
+            ),
           ),
           IconButton(
             icon: const Icon(Icons.download),

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../models/node_session.dart';
+import '../services/ambient_monitor.dart';
 import '../services/foreground.dart';
 import '../services/ws_server.dart';
 import '../theme.dart';
@@ -23,6 +24,7 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   final WsServer _server = WsServer();
+  final AmbientMonitor _ambient = AmbientMonitor();
 
   static const _appVersion = 'v2.0';
 
@@ -30,7 +32,12 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _server.addListener(_onServerChanged);
+    _ambient.addListener(_onAmbient);
     _boot();
+  }
+
+  void _onAmbient() {
+    if (mounted) setState(() {});
   }
 
   Future<void> _boot() async {
@@ -41,6 +48,9 @@ class _HomeScreenState extends State<HomeScreen> {
     if (mounted && !_server.running) {
       _showStatus('Server failed to start: ${_server.lastError}');
     }
+    // Ambient-noise monitoring is a best-effort helper; a denied mic permission
+    // just leaves the noise card showing a hint and never blocks screening.
+    await _ambient.start();
   }
 
   void _onServerChanged() {
@@ -52,6 +62,8 @@ class _HomeScreenState extends State<HomeScreen> {
   void dispose() {
     _server.removeListener(_onServerChanged);
     _server.dispose();
+    _ambient.removeListener(_onAmbient);
+    _ambient.dispose();
     Foreground.stop();
     super.dispose();
   }
@@ -102,6 +114,8 @@ class _HomeScreenState extends State<HomeScreen> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               _hubCard(nodes),
+              const SizedBox(height: 10),
+              _noiseCard(),
               const SizedBox(height: 10),
               if (nodes.isEmpty) _emptyState() else ...[
                 for (final n in nodes)
@@ -242,6 +256,56 @@ class _HomeScreenState extends State<HomeScreen> {
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
         elevation: 0,
+      ),
+    );
+  }
+
+  // ---------- ambient noise (Kalman-smoothed) ----------
+
+  Widget _noiseCard() {
+    final m = _ambient;
+    Color c;
+    IconData icon;
+    String text;
+    if (m.error != null) {
+      c = Colors.white54;
+      icon = Icons.mic_off;
+      text = m.error!;
+    } else if (!m.hasReading) {
+      c = Colors.white54;
+      icon = Icons.mic_none;
+      text = 'Starting ambient-noise monitor...';
+    } else if (m.tooNoisy) {
+      c = AppTheme.amber;
+      icon = Icons.warning_amber_rounded;
+      text = 'Too noisy for a reliable test';
+    } else {
+      c = AppTheme.online;
+      icon = Icons.mic;
+      text = 'Environment OK';
+    }
+    return Container(
+      decoration: AppTheme.panelBox(border: m.tooNoisy ? AppTheme.amber : null),
+      padding: const EdgeInsets.fromLTRB(12, 9, 12, 9),
+      child: Row(
+        children: [
+          Icon(icon, color: c, size: 18),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(text, style: TextStyle(color: c, fontSize: 13)),
+                const Text('Ambient noise (Kalman-smoothed, uncalibrated)',
+                    style: TextStyle(color: Colors.white38, fontSize: 10)),
+              ],
+            ),
+          ),
+          if (m.hasReading)
+            Text('${m.smoothedDb.toStringAsFixed(0)} dB',
+                style: TextStyle(
+                    color: c, fontSize: 15, fontWeight: FontWeight.bold)),
+        ],
       ),
     );
   }
