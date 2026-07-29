@@ -312,7 +312,8 @@ class _NodeCardState extends State<NodeCard> {
       padding: const EdgeInsets.fromLTRB(10, 10, 10, 12),
       child: Column(
         children: [
-          _frequencyRow(context),
+          // Frequency is fixed for the duration of a test in flight.
+          _frequencyRow(context, node.awaitingResult),
           const SizedBox(height: 12),
           _levelRow(context),
           const SizedBox(height: 12),
@@ -342,23 +343,26 @@ class _NodeCardState extends State<NodeCard> {
     );
   }
 
-  Widget _frequencyRow(BuildContext context) {
+  Widget _frequencyRow(BuildContext context, bool locked) {
     return _controlRow(
-      label: 'Frequency',
+      label: locked ? 'Frequency (locked during test)' : 'Frequency',
       field: _numberField(
         controller: _freqCtl,
         focusNode: _freqFocus,
         suffix: ' Hz',
+        enabled: !locked,
         onSubmitted: (v) {
           final parsed = double.tryParse(v);
           if (parsed != null && parsed > 0) {
             _setFrequency(parsed);
-            server.resendIfPlaying(node);
           } else {
             _freqCtl.text = node.frequency.toStringAsFixed(0);
           }
         },
       ),
+      // Frequency is fixed for the whole test: changing it mid-tone would restart
+      // the hunt at a new pitch and invalidate the threshold, so the control is
+      // disabled while a test is in flight and never re-sends to a playing node.
       slider: Slider(
         value: node.freqSliderIndex
             .toDouble()
@@ -366,11 +370,12 @@ class _NodeCardState extends State<NodeCard> {
         min: 0,
         max: (AppTheme.frequencies.length - 1).toDouble(),
         divisions: AppTheme.frequencies.length - 1,
-        onChanged: (v) {
-          node.freqSliderIndex = v.round();
-          _setFrequency(AppTheme.frequencies[node.freqSliderIndex]);
-        },
-        onChangeEnd: (_) => server.resendIfPlaying(node),
+        onChanged: locked
+            ? null
+            : (v) {
+                node.freqSliderIndex = v.round();
+                _setFrequency(AppTheme.frequencies[node.freqSliderIndex]);
+              },
       ),
       activeColor: AppTheme.darkCyan,
     );
@@ -499,17 +504,19 @@ class _NodeCardState extends State<NodeCard> {
     required FocusNode focusNode,
     String? suffix,
     bool allowSign = false,
+    bool enabled = true,
     required ValueChanged<String> onSubmitted,
   }) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: enabled ? Colors.white : const Color(0xFFE0E0E0),
         borderRadius: BorderRadius.circular(6),
       ),
       child: TextField(
         controller: controller,
         focusNode: focusNode,
+        enabled: enabled,
         keyboardType: TextInputType.numberWithOptions(
             decimal: allowSign, signed: allowSign),
         inputFormatters: [
