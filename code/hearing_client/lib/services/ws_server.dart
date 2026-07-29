@@ -53,12 +53,17 @@ class WsServer extends ChangeNotifier {
 
   Future<void> start() async {
     if (_server != null) return;
+    // seq must not repeat across app restarts, or a stored test could be matched
+    // to the wrong stimulus, so we resume above the highest seq on record. This
+    // is best-effort: a database problem must NEVER stop the socket from binding,
+    // or every node connection would be lost over a results-storage hiccup.
     try {
-      // seq must not repeat across app restarts, or a stored test could be
-      // matched to the wrong stimulus. Resume above the highest seq on record.
       final past = await Db.instance.loadTests(limit: 1);
       if (past.isNotEmpty) _seq = past.first.seq;
-
+    } catch (e) {
+      debugPrint('[ws] seq resume skipped (db unavailable): $e');
+    }
+    try {
       final ws = webSocketHandler((WebSocketChannel channel, String? _) {
         _onConnect(channel);
       });

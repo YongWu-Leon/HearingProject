@@ -1,11 +1,8 @@
 import 'dart:io';
-import 'dart:math';
 
-import 'package:flutter/foundation.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
-import 'package:sqflite_sqlcipher/sqflite.dart';
+import 'package:sqflite/sqflite.dart';
 
 import '../models/node_session.dart';
 
@@ -24,111 +21,44 @@ class Db {
 
   Database? _db;
 
-  // Encryption at rest: the SQLite file is opened through SQLCipher with a
-  // random 256-bit key kept in the platform secure store (Android Keystore /
-  // iOS Keychain). It is transparent -- no password prompt and no change to any
-  // read/write path -- so subject data is unreadable if the DB file is copied
-  // off the device. The exported CSV stays plaintext on purpose: export exists
-  // to hand results to analysis tools.
-  final FlutterSecureStorage _secure = const FlutterSecureStorage();
-  static const _kDbKey = 'db_key_v1';
-  static const _kEncrypted = 'db_encrypted_v1';
-
   Future<Database> get _handle async => _db ??= await _open();
-
-  /// Read the DB key from secure storage, generating one on first run.
-  Future<String> _dbKey() async {
-    var k = await _secure.read(key: _kDbKey);
-    if (k == null || k.isEmpty) {
-      final rnd = Random.secure();
-      k = List<int>.generate(32, (_) => rnd.nextInt(256))
-          .map((b) => b.toRadixString(16).padLeft(2, '0'))
-          .join();
-      await _secure.write(key: _kDbKey, value: k);
-    }
-    return k;
-  }
 
   Future<Database> _open() async {
     final dir = await getApplicationDocumentsDirectory();
-    final path = p.join(dir.path, 'hearing_results.db');
-    final key = await _dbKey();
-    final encrypted = (await _secure.read(key: _kEncrypted)) == '1';
-
-    // A database written by an earlier, unencrypted build is migrated in place
-    // the first time this build opens it, so existing records are preserved.
-    if (!encrypted && await File(path).exists()) {
-      final ok = await _migrateToEncrypted(path, key);
-      if (!ok) {
-        // Never lose access to the data: keep working on the plaintext file and
-        // retry the migration on the next launch.
-        return openDatabase(path, version: 1, onCreate: _createSchema);
-      }
-    }
-
-    final db = await openDatabase(path,
-        password: key, version: 1, onCreate: _createSchema);
-    await _secure.write(key: _kEncrypted, value: '1');
-    return db;
-  }
-
-  /// Copy a plaintext database into a new SQLCipher-encrypted file and swap it
-  /// in, keeping a .bak of the original as a safety net. Returns false (leaving
-  /// the plaintext file untouched) if anything goes wrong.
-  Future<bool> _migrateToEncrypted(String path, String key) async {
-    final encPath = '$path.enc';
-    try {
-      await File(path).copy('$path.bak');
-      final enc = File(encPath);
-      if (await enc.exists()) await enc.delete();
-
-      final plain = await openDatabase(path); // no password = plaintext
-      await plain.execute("ATTACH DATABASE '$encPath' AS enc KEY '$key'");
-      await plain.rawQuery("SELECT sqlcipher_export('enc')");
-      await plain.execute('DETACH DATABASE enc');
-      await plain.close();
-
-      await File(path).delete();
-      await enc.rename(path);
-      return true;
-    } catch (e) {
-      debugPrint('[db] encryption migration failed, staying plaintext: $e');
-      final enc = File(encPath);
-      if (await enc.exists()) await enc.delete();
-      return false;
-    }
-  }
-
-  Future<void> _createSchema(Database db, int version) async {
-    await db.execute('''
-      CREATE TABLE tests (
-        id            INTEGER PRIMARY KEY AUTOINCREMENT,
-        node_id       TEXT    NOT NULL,
-        seq           INTEGER NOT NULL,
-        freq_hz       REAL    NOT NULL,
-        ear           TEXT    NOT NULL,
-        start_ts      INTEGER NOT NULL,
-        end_ts        INTEGER,
-        reason        TEXT,
-        threshold_db  REAL
-      )
-    ''');
-    await db.execute('''
-      CREATE TABLE steps (
-        id           INTEGER PRIMARY KEY AUTOINCREMENT,
-        test_id      INTEGER NOT NULL,
-        idx          INTEGER NOT NULL,
-        db           REAL    NOT NULL,
-        linear       REAL,
-        from_btn     TEXT    NOT NULL,
-        remaining_s  REAL,
-        ts           INTEGER NOT NULL,
-        FOREIGN KEY (test_id) REFERENCES tests (id) ON DELETE CASCADE
-      )
-    ''');
-    await db.execute(
-        'CREATE INDEX idx_tests_node ON tests (node_id, start_ts DESC)');
-    await db.execute('CREATE INDEX idx_steps_test ON steps (test_id, idx)');
+    return openDatabase(
+      p.join(dir.path, 'hearing_results.db'),
+      version: 1,
+      onCreate: (db, _) async {
+        await db.execute('''
+          CREATE TABLE tests (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            node_id       TEXT    NOT NULL,
+            seq           INTEGER NOT NULL,
+            freq_hz       REAL    NOT NULL,
+            ear           TEXT    NOT NULL,
+            start_ts      INTEGER NOT NULL,
+            end_ts        INTEGER,
+            reason        TEXT,
+            threshold_db  REAL
+          )
+        ''');
+        await db.execute('''
+          CREATE TABLE steps (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            test_id      INTEGER NOT NULL,
+            idx          INTEGER NOT NULL,
+            db           REAL    NOT NULL,
+            linear       REAL,
+            from_btn     TEXT    NOT NULL,
+            remaining_s  REAL,
+            ts           INTEGER NOT NULL,
+            FOREIGN KEY (test_id) REFERENCES tests (id) ON DELETE CASCADE
+          )
+        ''');
+        await db.execute('CREATE INDEX idx_tests_node ON tests (node_id, start_ts DESC)');
+        await db.execute('CREATE INDEX idx_steps_test ON steps (test_id, idx)');
+      },
+    );
   }
 
   // ---------- writes ----------

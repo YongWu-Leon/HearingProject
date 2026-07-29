@@ -221,16 +221,6 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ],
           ),
-          Padding(
-            padding: const EdgeInsets.only(top: 4),
-            child: Text(
-              _server.syncMode
-                  ? 'Sync: expand a node and copy its settings to the others, '
-                      'then Play all.'
-                  : 'Independent: each node plays its own frequency and level.',
-              style: const TextStyle(color: Colors.white60, fontSize: 11),
-            ),
-          ),
         ],
       ),
     );
@@ -292,14 +282,7 @@ class _HomeScreenState extends State<HomeScreen> {
           Icon(icon, color: c, size: 18),
           const SizedBox(width: 8),
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(text, style: TextStyle(color: c, fontSize: 13)),
-                const Text('Ambient noise (Kalman-smoothed, uncalibrated)',
-                    style: TextStyle(color: Colors.white38, fontSize: 10)),
-              ],
-            ),
+            child: Text(text, style: TextStyle(color: c, fontSize: 13)),
           ),
           if (m.hasReading)
             Text('${m.smoothedDb.toStringAsFixed(0)} dB',
