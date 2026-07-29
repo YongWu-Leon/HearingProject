@@ -226,6 +226,15 @@ class _NodeCardState extends State<NodeCard> {
                 widget.onStatus('${node.nodeId}: stopping');
               },
             ),
+            _iconAction(
+              icon: Icons.person_add_alt_1,
+              tooltip: 'New patient (start a new audiogram group)',
+              enabled: !busy,
+              onTap: () {
+                server.newPatient(node);
+                widget.onStatus('${node.nodeId}: new patient started');
+              },
+            ),
           ],
           _iconAction(
             icon: Icons.list_alt,

@@ -314,6 +314,7 @@ class WsServer extends ChangeNotifier {
     n.playSentAt = DateTime.now();
     n.assembler.begin(
       nodeId: n.nodeId,
+      patientId: n.patientGroupTs,
       seq: seq,
       freqHz: n.frequency,
       ear: n.ear,
@@ -366,6 +367,13 @@ class WsServer extends ChangeNotifier {
   /// Repaint after the UI mutates a node's parameters in place. notifyListeners
   /// is protected, so widgets go through this instead.
   void refresh() => _safeNotify();
+
+  /// Start a new patient/session on a node: tests taken from now on are grouped
+  /// separately in the audiogram. A test still in flight keeps its old group.
+  void newPatient(NodeSession n) {
+    n.startNewPatient();
+    _safeNotify();
+  }
 
   void _onTick() {
     var changed = false;

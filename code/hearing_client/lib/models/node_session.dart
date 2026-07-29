@@ -107,6 +107,13 @@ class TestStep {
 class TestRecord {
   final int? id;
   final String nodeId;
+
+  /// Groups the tests taken on one node into one patient/session. Every test
+  /// between two "new patient" marks shares this value (the mark's timestamp),
+  /// so the audiogram draws one chart per patient instead of mixing them. 0 for
+  /// legacy rows saved before grouping existed.
+  final int patientId;
+
   final int seq;
   final double freqHz;
   final String ear;
@@ -122,6 +129,7 @@ class TestRecord {
   const TestRecord({
     this.id,
     required this.nodeId,
+    this.patientId = 0,
     required this.seq,
     required this.freqHz,
     required this.ear,
@@ -144,6 +152,7 @@ class TestRecord {
       TestRecord(
         id: id ?? this.id,
         nodeId: nodeId,
+        patientId: patientId,
         seq: seq,
         freqHz: freqHz,
         ear: ear,
@@ -157,6 +166,7 @@ class TestRecord {
   Map<String, Object?> toDbMap() => {
         if (id != null) 'id': id,
         'node_id': nodeId,
+        'patient_id': patientId,
         'seq': seq,
         'freq_hz': freqHz,
         'ear': ear,
@@ -171,6 +181,7 @@ class TestRecord {
       TestRecord(
         id: (m['id'] as num?)?.toInt(),
         nodeId: m['node_id'] as String,
+        patientId: (m['patient_id'] as num?)?.toInt() ?? 0,
         seq: (m['seq'] as num).toInt(),
         freqHz: (m['freq_hz'] as num).toDouble(),
         ear: m['ear'] as String? ?? 'both',
@@ -219,6 +230,15 @@ class NodeSession {
   double remainingS = 0;
 
   // --- operator-set parameters, per node ---
+
+  /// Marks the start of the current patient/session on this node. Every completed
+  /// test stamps this value, so the audiogram can group tests by patient. Set
+  /// once when the session starts and advanced only by "New patient".
+  int patientGroupTs = DateTime.now().millisecondsSinceEpoch;
+
+  void startNewPatient() =>
+      patientGroupTs = DateTime.now().millisecondsSinceEpoch;
+
   double frequency = 1000;
   int freqSliderIndex = 4;
 

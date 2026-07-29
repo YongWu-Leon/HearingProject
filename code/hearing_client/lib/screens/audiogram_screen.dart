@@ -6,17 +6,16 @@ import '../models/node_session.dart';
 import '../services/db.dart';
 import '../theme.dart';
 
-/// Audiogram view: the subject's hearing threshold plotted against frequency in
-/// the conventional clinical layout -- log frequency across the bottom, and
-/// quieter (better) hearing towards the top. Right ear = red circles, left ear =
-/// blue crosses, unspecified/both = grey dots, following audiometric convention.
+/// Audiogram view. One chart PER PATIENT: the tests taken on a node between two
+/// "New patient" marks form one patient group, and each group is drawn as its
+/// own audiogram, so different subjects are never mixed onto one chart.
 ///
-/// IMPORTANT: the vertical axis is the device's own digital full-scale dB, NOT
-/// calibrated dB HL, and it is labelled as such. Once the transducer is
-/// calibrated (a per-frequency offset), the same plot becomes a real dB HL
-/// audiogram with no change to this screen beyond the axis label.
+/// Layout follows the clinical convention -- log frequency across the bottom,
+/// quieter (better) hearing towards the top, right ear = red circles, left ear =
+/// blue crosses. The vertical axis is uncalibrated device dB, not dB HL, and is
+/// labelled as such; a per-frequency calibration offset turns it into dB HL.
 class AudiogramScreen extends StatefulWidget {
-  /// null shows every node's data together.
+  /// null shows every node's groups together.
   final String? nodeId;
 
   const AudiogramScreen({super.key, this.nodeId});
@@ -45,26 +44,36 @@ class _AudiogramScreenState extends State<AudiogramScreen> {
     });
   }
 
-  /// ear -> (frequency -> threshold dB), keeping the most recent test for each
-  /// frequency. loadTests returns newest first, so the first value we see for a
-  /// frequency is the newest and putIfAbsent keeps it.
-  Map<String, Map<double, double>> _series() {
-    final out = <String, Map<double, double>>{};
+  /// Completed tests grouped by (node, patient), newest group first. Within a
+  /// group the newest threshold for each frequency wins (loadTests is newest
+  /// first, so the first value seen is kept).
+  List<_PatientGroup> _groups() {
+    final byKey = <String, _PatientGroup>{};
+    final order = <String>[];
     for (final t in _tests) {
       if (!t.isComplete || t.thresholdDb == null) continue;
-      out.putIfAbsent(t.ear, () => {}).putIfAbsent(t.freqHz, () => t.thresholdDb!);
+      final key = '${t.nodeId}#${t.patientId}';
+      var g = byKey[key];
+      if (g == null) {
+        g = _PatientGroup(t.nodeId, t.patientId);
+        byKey[key] = g;
+        order.add(key);
+      }
+      g.series
+          .putIfAbsent(t.ear, () => {})
+          .putIfAbsent(t.freqHz, () => t.thresholdDb!);
     }
-    return out;
+    return [for (final k in order) byKey[k]!];
   }
 
   @override
   Widget build(BuildContext context) {
-    final series = _series();
-    final hasData = series.values.any((m) => m.isNotEmpty);
+    final groups = _groups();
     return Scaffold(
       appBar: AppBar(
-        title: Text(
-            widget.nodeId == null ? 'Audiogram' : 'Audiogram - ${widget.nodeId}'),
+        title: Text(widget.nodeId == null
+            ? 'Audiograms'
+            : 'Audiograms - ${widget.nodeId}'),
         backgroundColor: AppTheme.darkCyan,
         foregroundColor: Colors.white,
         elevation: 0,
@@ -80,9 +89,24 @@ class _AudiogramScreenState extends State<AudiogramScreen> {
       body: SafeArea(
         child: _loading
             ? const Center(child: CircularProgressIndicator(color: Colors.white))
-            : !hasData
+            : groups.isEmpty
                 ? _empty()
-                : _chart(series),
+                : Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(14, 12, 14, 4),
+                        child: _legendAndNote(),
+                      ),
+                      Expanded(
+                        child: ListView.builder(
+                          padding: const EdgeInsets.fromLTRB(14, 6, 14, 14),
+                          itemCount: groups.length,
+                          itemBuilder: (_, i) => _groupCard(groups[i]),
+                        ),
+                      ),
+                    ],
+                  ),
       ),
     );
   }
@@ -103,7 +127,8 @@ class _AudiogramScreenState extends State<AudiogramScreen> {
               SizedBox(height: 8),
               Text(
                 'Finish a test (let the countdown run out) and its threshold '
-                'appears on the audiogram.',
+                'appears on that patient\'s audiogram. Use the "New patient" '
+                'button on a node to start a fresh group.',
                 textAlign: TextAlign.center,
                 style: TextStyle(color: Colors.white70, fontSize: 13),
               ),
@@ -112,39 +137,7 @@ class _AudiogramScreenState extends State<AudiogramScreen> {
         ),
       );
 
-  Widget _chart(Map<String, Map<double, double>> series) {
-    return Padding(
-      padding: const EdgeInsets.all(14),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          _legend(),
-          const SizedBox(height: 12),
-          Expanded(
-            child: Container(
-              padding: const EdgeInsets.fromLTRB(4, 12, 12, 4),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: CustomPaint(
-                painter: _AudiogramPainter(series),
-                size: Size.infinite,
-              ),
-            ),
-          ),
-          const SizedBox(height: 10),
-          const Text(
-            'Vertical axis is uncalibrated device dB (digital full scale), not '
-            'clinical dB HL. Quieter (better) hearing is towards the top.',
-            style: TextStyle(color: Colors.white, fontSize: 11),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _legend() {
+  Widget _legendAndNote() {
     Widget item(Widget mark, String label) => Row(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -154,16 +147,99 @@ class _AudiogramScreenState extends State<AudiogramScreen> {
                 style: const TextStyle(color: Colors.white, fontSize: 12)),
           ],
         );
-    return Wrap(
-      spacing: 18,
-      runSpacing: 6,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        item(const Icon(Icons.circle_outlined, color: _red, size: 16), 'Right'),
-        item(const Icon(Icons.close, color: _blue, size: 16), 'Left'),
-        item(const Icon(Icons.circle, color: _grey, size: 13), 'Both'),
+        Wrap(
+          spacing: 18,
+          runSpacing: 6,
+          children: [
+            item(const Icon(Icons.circle_outlined, color: _red, size: 16),
+                'Right'),
+            item(const Icon(Icons.close, color: _blue, size: 16), 'Left'),
+            item(const Icon(Icons.circle, color: _grey, size: 13), 'Both'),
+          ],
+        ),
+        const SizedBox(height: 6),
+        const Text(
+          'Uncalibrated device dB (not dB HL). Quieter/better hearing is higher.',
+          style: TextStyle(color: Colors.white70, fontSize: 11),
+        ),
       ],
     );
   }
+
+  Widget _groupCard(_PatientGroup g) {
+    final border = AppTheme.nodeColor(g.nodeId);
+    final onNode = AppTheme.onNodeColor(g.nodeId);
+    return Container(
+      margin: const EdgeInsets.only(bottom: 14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border.all(color: border, width: 2),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Container(
+            color: AppTheme.paleCyan,
+            padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 8),
+            child: Row(
+              children: [
+                const Icon(Icons.person, size: 15, color: Color(0xFF00595E)),
+                const SizedBox(width: 6),
+                Text(_patientLabel(g.patientId),
+                    style: const TextStyle(
+                        color: Color(0xFF00595E),
+                        fontSize: 13,
+                        fontWeight: FontWeight.bold)),
+                const Spacer(),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                  decoration: BoxDecoration(
+                      color: border, borderRadius: BorderRadius.circular(6)),
+                  child: Text(g.nodeId,
+                      style: TextStyle(
+                          color: onNode,
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold)),
+                ),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(4, 10, 10, 8),
+            child: SizedBox(
+              height: 240,
+              child: CustomPaint(
+                painter: _AudiogramPainter(g.series),
+                size: Size.infinite,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  static String _patientLabel(int patientId) {
+    if (patientId == 0) return 'Ungrouped tests';
+    final d = DateTime.fromMillisecondsSinceEpoch(patientId);
+    String two(int n) => n.toString().padLeft(2, '0');
+    return 'Patient - ${two(d.month)}-${two(d.day)} ${two(d.hour)}:${two(d.minute)}';
+  }
+}
+
+class _PatientGroup {
+  final String nodeId;
+  final int patientId;
+
+  /// ear -> (frequency -> threshold dB)
+  final Map<String, Map<double, double>> series = {};
+
+  _PatientGroup(this.nodeId, this.patientId);
 }
 
 const _red = Color(0xFFD32F2F);
@@ -212,14 +288,12 @@ class _AudiogramPainter extends CustomPainter {
     double yFor(double db) =>
         plot.top + (db - _dbTop) / (_dbBottom - _dbTop) * plot.height;
 
-    // Horizontal dB gridlines + labels down the left edge.
     for (final db in _dbGrid) {
       final y = yFor(db);
       canvas.drawLine(Offset(plot.left, y), Offset(plot.right, y), grid);
       final t = _label('${db.toInt()}');
       t.paint(canvas, Offset(plot.left - t.width - 5, y - t.height / 2));
     }
-    // Vertical frequency gridlines + labels along the bottom.
     for (final f in _labelFreqs) {
       final x = xFor(f);
       canvas.drawLine(Offset(x, plot.top), Offset(x, plot.bottom), grid);
@@ -228,8 +302,6 @@ class _AudiogramPainter extends CustomPainter {
     }
     canvas.drawRect(plot, axis);
 
-    // Series. Right and left first (named colours + clinical markers), then any
-    // 'both'/unspecified ears as grey dots.
     _drawSeries(canvas, series['R'], _red, _Marker.circle, xFor, yFor);
     _drawSeries(canvas, series['L'], _blue, _Marker.cross, xFor, yFor);
     for (final e in series.entries) {

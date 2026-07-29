@@ -23,12 +23,14 @@ class TestAssembler {
   /// Called when the app sends play_tone.
   void begin({
     required String nodeId,
+    int patientId = 0,
     required int seq,
     required double freqHz,
     required String ear,
   }) {
     _pending = TestRecord(
       nodeId: nodeId,
+      patientId: patientId,
       seq: seq,
       freqHz: freqHz,
       ear: ear,

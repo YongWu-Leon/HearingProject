@@ -27,12 +27,13 @@ class Db {
     final dir = await getApplicationDocumentsDirectory();
     return openDatabase(
       p.join(dir.path, 'hearing_results.db'),
-      version: 1,
+      version: 2,
       onCreate: (db, _) async {
         await db.execute('''
           CREATE TABLE tests (
             id            INTEGER PRIMARY KEY AUTOINCREMENT,
             node_id       TEXT    NOT NULL,
+            patient_id    INTEGER,
             seq           INTEGER NOT NULL,
             freq_hz       REAL    NOT NULL,
             ear           TEXT    NOT NULL,
@@ -57,6 +58,13 @@ class Db {
         ''');
         await db.execute('CREATE INDEX idx_tests_node ON tests (node_id, start_ts DESC)');
         await db.execute('CREATE INDEX idx_steps_test ON steps (test_id, idx)');
+      },
+      // v2 adds patient grouping. Existing rows get a NULL patient_id, which the
+      // model reads as group 0 (legacy / ungrouped). ADD COLUMN is non-destructive.
+      onUpgrade: (db, oldV, _) async {
+        if (oldV < 2) {
+          await db.execute('ALTER TABLE tests ADD COLUMN patient_id INTEGER');
+        }
       },
     );
   }
