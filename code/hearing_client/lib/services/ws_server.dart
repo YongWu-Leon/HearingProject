@@ -302,9 +302,9 @@ class WsServer extends ChangeNotifier {
   /// Start a tone on one node using that node's own dialled-in parameters.
   void play(NodeSession n) {
     if (!n.online) return;
-    // Restarting over a test still in flight (the operator changed the level
-    // mid-tone, so resendIfPlaying fired). Discard the interrupted one -- it did
-    // not run to completion, so it is not a result.
+    // Safety net: if a test is somehow still in flight when Play is pressed,
+    // discard the interrupted one -- it did not run to completion, so it is not
+    // a result.
     if (n.assembler.active) n.assembler.abandon('restarted');
 
     final seq = _nextSeq();
@@ -346,12 +346,6 @@ class WsServer extends ChangeNotifier {
     for (final n in nodes.values) {
       if (n.selected && n.online) stop(n);
     }
-  }
-
-  /// Re-send while a tone is already running, so a volume or frequency change
-  /// made on the phone takes effect immediately (matches the old behaviour).
-  void resendIfPlaying(NodeSession n) {
-    if (n.isPlaying && n.online) play(n);
   }
 
   void _send(NodeSession n, Map<String, Object?> msg) {

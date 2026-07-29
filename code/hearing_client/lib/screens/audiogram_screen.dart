@@ -59,11 +59,22 @@ class _AudiogramScreenState extends State<AudiogramScreen> {
         byKey[key] = g;
         order.add(key);
       }
+      if (g.firstStart == null || t.startTs.isBefore(g.firstStart!)) {
+        g.firstStart = t.startTs;
+      }
+      final end = t.endTs ?? t.startTs;
+      if (g.lastEnd == null || end.isAfter(g.lastEnd!)) g.lastEnd = end;
       g.series
           .putIfAbsent(t.ear, () => {})
           .putIfAbsent(t.freqHz, () => t.thresholdDb!);
     }
-    return [for (final k in order) byKey[k]!];
+    final list = [for (final k in order) byKey[k]!];
+    // order is newest-first (tests are newest first), so the earliest group is
+    // last -- number it Patient 1 and the newest the highest.
+    for (var i = 0; i < list.length; i++) {
+      list[i].patientNo = list.length - i;
+    }
+    return list;
   }
 
   @override
@@ -189,12 +200,19 @@ class _AudiogramScreenState extends State<AudiogramScreen> {
               children: [
                 const Icon(Icons.person, size: 15, color: Color(0xFF00595E)),
                 const SizedBox(width: 6),
-                Text(_patientLabel(g.patientId),
+                Text('Patient ${g.patientNo}',
                     style: const TextStyle(
                         color: Color(0xFF00595E),
                         fontSize: 13,
                         fontWeight: FontWeight.bold)),
-                const Spacer(),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(_timeSpanLabel(g),
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                          color: Color(0xFF00595E), fontSize: 11)),
+                ),
+                const SizedBox(width: 8),
                 Container(
                   padding:
                       const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
@@ -224,11 +242,13 @@ class _AudiogramScreenState extends State<AudiogramScreen> {
     );
   }
 
-  static String _patientLabel(int patientId) {
-    if (patientId == 0) return 'Ungrouped tests';
-    final d = DateTime.fromMillisecondsSinceEpoch(patientId);
+  static String _timeSpanLabel(_PatientGroup g) {
+    final s = g.firstStart;
+    if (s == null) return '';
     String two(int n) => n.toString().padLeft(2, '0');
-    return 'Patient - ${two(d.month)}-${two(d.day)} ${two(d.hour)}:${two(d.minute)}';
+    final e = g.lastEnd ?? s;
+    return '${two(s.month)}-${two(s.day)}  '
+        '${two(s.hour)}:${two(s.minute)}~${two(e.hour)}:${two(e.minute)}';
   }
 }
 
@@ -238,6 +258,12 @@ class _PatientGroup {
 
   /// ear -> (frequency -> threshold dB)
   final Map<String, Map<double, double>> series = {};
+
+  /// Start of the first test and end of the last test in this group, for the
+  /// "date  HH:MM~HH:MM" header. patientNo is a running mark (1 = earliest).
+  DateTime? firstStart;
+  DateTime? lastEnd;
+  int patientNo = 0;
 
   _PatientGroup(this.nodeId, this.patientId);
 }

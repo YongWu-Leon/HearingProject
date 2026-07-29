@@ -150,13 +150,13 @@ class _NodeCardState extends State<NodeCard> {
       child: Row(
         children: [
           Checkbox(
+            // Always toggleable, even offline: an offline node (e.g. one not set
+            // up yet) must still be de-selectable so it is skipped by Play all.
             value: node.selected,
-            onChanged: online
-                ? (v) {
-                    node.selected = v ?? false;
-                    server.refresh();
-                  }
-                : null,
+            onChanged: (v) {
+              node.selected = v ?? false;
+              server.refresh();
+            },
             side: const BorderSide(color: Colors.white70, width: 1.5),
             fillColor: WidgetStateProperty.resolveWith(
                 (s) => s.contains(WidgetState.selected)
@@ -315,12 +315,13 @@ class _NodeCardState extends State<NodeCard> {
       padding: const EdgeInsets.fromLTRB(10, 10, 10, 12),
       child: Column(
         children: [
-          // Frequency is fixed for the duration of a test in flight.
+          // Once a test is in flight the tone is fixed: the only thing the phone
+          // can still do to the node is Stop. Frequency, level and ear all lock.
           _frequencyRow(context, node.awaitingResult),
           const SizedBox(height: 12),
-          _levelRow(context),
+          _levelRow(context, node.awaitingResult),
           const SizedBox(height: 12),
-          _earRow(),
+          _earRow(node.awaitingResult),
         ],
       ),
     );
@@ -364,19 +365,21 @@ class _NodeCardState extends State<NodeCard> {
     );
   }
 
-  Widget _levelRow(BuildContext context) {
+  Widget _levelRow(BuildContext context, bool locked) {
     return _controlRow(
-      label: 'Level',
+      label: locked ? 'Level (subject is adjusting)' : 'Level',
       field: _numberField(
         controller: _levelCtl,
         focusNode: _levelFocus,
         suffix: ' dB',
         allowSign: true,
+        // During a test the level tracks the subject's live X/Y adjustments; the
+        // operator can watch it but not change it. Only Stop affects the node.
+        readOnly: locked,
         onSubmitted: (v) {
           final parsed = double.tryParse(v);
           if (parsed != null) {
             _setLevel(parsed);
-            server.resendIfPlaying(node);
           } else {
             _levelCtl.text = node.levelDb.toStringAsFixed(1);
           }
@@ -388,8 +391,8 @@ class _NodeCardState extends State<NodeCard> {
         value: node.levelDb.clamp(_dbMin, _dbMax),
         min: _dbMin,
         max: _dbMax,
-        onChanged: (v) => _setLevel((v / _dbStep).round() * _dbStep),
-        onChangeEnd: (_) => server.resendIfPlaying(node),
+        onChanged:
+            locked ? null : (v) => _setLevel((v / _dbStep).round() * _dbStep),
       ),
       activeColor: AppTheme.amber,
     );
@@ -430,27 +433,29 @@ class _NodeCardState extends State<NodeCard> {
     );
   }
 
-  Widget _earRow() {
+  Widget _earRow(bool locked) {
     return Row(
       children: [
-        _earOption('L', 'Left'),
+        _earOption('L', 'Left', locked),
         const SizedBox(width: 8),
-        _earOption('both', 'Both'),
+        _earOption('both', 'Both', locked),
         const SizedBox(width: 8),
-        _earOption('R', 'Right'),
+        _earOption('R', 'Right', locked),
       ],
     );
   }
 
-  Widget _earOption(String value, String label) {
+  Widget _earOption(String value, String label, bool locked) {
     final selected = node.ear == value;
     return Expanded(
       child: GestureDetector(
-        onTap: () {
-          node.ear = value;
-          server.refresh();
-          server.resendIfPlaying(node);
-        },
+        // Ear is part of the tone, so it is fixed once a test is in flight.
+        onTap: locked
+            ? null
+            : () {
+                node.ear = value;
+                server.refresh();
+              },
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: 9),
           decoration: BoxDecoration(
@@ -488,6 +493,7 @@ class _NodeCardState extends State<NodeCard> {
     String? suffix,
     bool allowSign = false,
     bool enabled = true,
+    bool readOnly = false,
     required ValueChanged<String> onSubmitted,
   }) {
     return Container(
@@ -500,6 +506,7 @@ class _NodeCardState extends State<NodeCard> {
         controller: controller,
         focusNode: focusNode,
         enabled: enabled,
+        readOnly: readOnly,
         keyboardType: TextInputType.numberWithOptions(
             decimal: allowSign, signed: allowSign),
         inputFormatters: [
