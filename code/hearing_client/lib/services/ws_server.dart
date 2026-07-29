@@ -35,11 +35,6 @@ class WsServer extends ChangeNotifier {
   String? lastError;
   bool get running => _server != null;
 
-  /// Sync mode: sending Play once fans the same parameters out to every selected
-  /// node. Off (the default) leaves each card independent, so node 1 can be
-  /// running 1 kHz while node 2 runs 2 kHz at a different level.
-  bool syncMode = false;
-
   WsServer() {
     // Seed the roster so every expected board has a card from the start, greyed
     // out until it registers. Without this a board that is switched off simply
@@ -350,18 +345,6 @@ class WsServer extends ChangeNotifier {
     for (final n in nodes.values) {
       if (n.selected && n.online) stop(n);
     }
-  }
-
-  /// Sync mode: copy one node's settings onto every other selected node.
-  void applyToSelected(NodeSession source) {
-    for (final n in nodes.values) {
-      if (identical(n, source) || !n.selected) continue;
-      n.frequency = source.frequency;
-      n.freqSliderIndex = source.freqSliderIndex;
-      n.levelDb = source.levelDb;
-      n.ear = source.ear;
-    }
-    _safeNotify();
   }
 
   /// Re-send while a tone is already running, so a volume or frequency change

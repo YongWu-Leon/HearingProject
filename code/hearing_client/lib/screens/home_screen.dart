@@ -123,7 +123,6 @@ class _HomeScreenState extends State<HomeScreen> {
                     key: ValueKey(n.nodeId),
                     node: n,
                     server: _server,
-                    syncMode: _server.syncMode,
                     onToggleExpand: () =>
                         setState(() => n.expanded = !n.expanded),
                     onOpenRecords: () => _openRecords(nodeId: n.nodeId),
@@ -177,47 +176,29 @@ class _HomeScreenState extends State<HomeScreen> {
           Row(
             children: [
               Expanded(
-                child: GestureDetector(
-                  onTap: () =>
-                      setState(() => _server.syncMode = !_server.syncMode),
-                  child: Row(
-                    children: [
-                      Icon(
-                        _server.syncMode
-                            ? Icons.check_box
-                            : Icons.check_box_outline_blank,
-                        color: Colors.white,
-                        size: 18,
-                      ),
-                      const SizedBox(width: 6),
-                      const Flexible(
-                        child: Text('Sync mode',
-                            style: TextStyle(color: Colors.white, fontSize: 13)),
-                      ),
-                    ],
-                  ),
+                child: _globalButton(
+                  label: 'Play all',
+                  icon: Icons.play_arrow,
+                  color: Colors.green.shade700,
+                  enabled: selected > 0,
+                  onTap: () {
+                    _server.playSelected();
+                    _showStatus('Started $selected selected node(s)');
+                  },
                 ),
               ),
-              _globalButton(
-                label: 'Play all',
-                icon: Icons.play_arrow,
-                color: Colors.green.shade700,
-                enabled: selected > 0,
-                onTap: () {
-                  _server.playSelected();
-                  _showStatus('Started $selected selected node(s)');
-                },
-              ),
-              const SizedBox(width: 6),
-              _globalButton(
-                label: 'Stop all',
-                icon: Icons.stop,
-                color: Colors.orange.shade700,
-                enabled: selected > 0,
-                onTap: () {
-                  _server.stopSelected();
-                  _showStatus('Stopped $selected selected node(s)');
-                },
+              const SizedBox(width: 8),
+              Expanded(
+                child: _globalButton(
+                  label: 'Stop all',
+                  icon: Icons.stop,
+                  color: Colors.orange.shade700,
+                  enabled: selected > 0,
+                  onTap: () {
+                    _server.stopSelected();
+                    _showStatus('Stopped $selected selected node(s)');
+                  },
+                ),
               ),
             ],
           ),

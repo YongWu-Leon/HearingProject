@@ -21,7 +21,7 @@ class AmbientMonitor extends ChangeNotifier {
   /// hardware against a sound-level meter.
   final double warnDb;
 
-  AmbientMonitor({this.warnDb = 55});
+  AmbientMonitor({this.warnDb = 70});
 
   final KalmanFilter _filter = KalmanFilter();
   NoiseMeter? _meter;

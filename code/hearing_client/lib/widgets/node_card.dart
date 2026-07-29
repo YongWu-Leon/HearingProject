@@ -24,7 +24,6 @@ import '../theme.dart';
 class NodeCard extends StatefulWidget {
   final NodeSession node;
   final WsServer server;
-  final bool syncMode;
   final VoidCallback onToggleExpand;
   final VoidCallback onOpenRecords;
   final void Function(String message) onStatus;
@@ -33,7 +32,6 @@ class NodeCard extends StatefulWidget {
     super.key,
     required this.node,
     required this.server,
-    required this.syncMode,
     required this.onToggleExpand,
     required this.onOpenRecords,
     required this.onStatus,
@@ -55,10 +53,6 @@ class _NodeCardState extends State<NodeCard> {
   static const double _dbMin = -80;
   static const double _dbMax = 0;
   static const double _dbStep = 5;
-
-  // Temporarily hidden per request. Flip back to true to restore the sync-mode
-  // "copy these settings to selected nodes" button (the copy logic still works).
-  static const bool _showCopyButton = false;
 
   @override
   void initState() {
@@ -318,26 +312,6 @@ class _NodeCardState extends State<NodeCard> {
           _levelRow(context),
           const SizedBox(height: 12),
           _earRow(),
-          if (widget.syncMode && _showCopyButton) ...[
-            const SizedBox(height: 12),
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed: () {
-                  server.applyToSelected(node);
-                  widget.onStatus(
-                      'Copied ${node.nodeId} settings to all selected nodes');
-                },
-                icon: const Icon(Icons.copy_all, size: 16),
-                label: const Text('Copy these settings to selected nodes'),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: Colors.white,
-                  side: const BorderSide(color: AppTheme.panelBorder),
-                  padding: const EdgeInsets.symmetric(vertical: 10),
-                ),
-              ),
-            ),
-          ],
         ],
       ),
     );
