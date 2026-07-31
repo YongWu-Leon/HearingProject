@@ -18,8 +18,9 @@ Topology (replaces the old SoftAP mesh -- see docs/DECISIONS.md D-009):
 Design principles:
   - All constants live here; logic modules never hardcode pins, dB steps, paths or
     network parameters.
-  - Volume is accounted for in dB (0 dB = full scale, -80 dB = silent). The phone
-    still sends v in 0-100 linear; the conversion happens here via linear_to_db().
+  - Volume is accounted for in dB (0 dB = full scale, -120 dB = the quietest level
+    the scale allows -- a clamp, not silence). The phone still sends v in 0-100
+    linear; the conversion happens here via linear_to_db().
 """
 import math
 import os
@@ -170,7 +171,14 @@ AUDIO_DEV_EXCLUDE = ("hdmi",)
 # ============================================================
 # dB volume system
 #   linear amplitude = 10 ** (db / 20); ceiling 0 dB (= full scale 1.0),
-#   floor -80 dB (~silent).
+#   floor -120 dB.
+#
+#   The floor is a CLAMP, not a mute. It used to be -80 dB AND db_to_linear()
+#   returned exactly 0.0 there, so the bottom step of the range emitted digital
+#   silence -- a subject at -75 dB heard the tone clearly, stepped down, and got
+#   nothing at all. That reads as "threshold found" but is an artefact of the
+#   code, and it also meant any threshold below -80 dB was unmeasurable.
+#   Silencing the output is the job of stop / is_playing, not of the level scale.
 #
 #   NOTE on the migration spec's REF_DB=100 / amplitude = 10^((level_db-REF_DB)/20):
 #   that convention is NOT adopted. It would put every level 100 dB below the
@@ -181,7 +189,7 @@ AUDIO_DEV_EXCLUDE = ("hdmi",)
 # ============================================================
 REF_DB = 0.0                     # placeholder, uncalibrated (see note above)
 DB_CEILING = 0.0                 # upper limit (dB)
-DB_FLOOR = -80.0                 # lower limit (dB); <= this outputs 0
+DB_FLOOR = -120.0                # lower limit (dB); a clamp, NOT a mute
 DB_STEP_DOWN = 10.0              # X button: -10 dB per press
 DB_STEP_UP = 5.0                 # Y button: +5 dB per press
 DEFAULT_DB = -6.0                # initial volume (~ linear 0.5)
@@ -216,9 +224,7 @@ GATEWAY_PROBE_TIMEOUT = 2        # seconds to wait for one gateway ping
 
 # ---------- derived helpers ----------
 def db_to_linear(db):
-    """dB to linear amplitude. db <= DB_FLOOR is treated as silence (returns 0.0)."""
-    if db <= DB_FLOOR:
-        return 0.0
+    """dB to linear amplitude. Always a real amplitude -- the floor never mutes."""
     return 10 ** ((db - REF_DB) / 20.0)
 
 

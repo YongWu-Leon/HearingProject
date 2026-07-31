@@ -286,9 +286,9 @@ class _AudiogramPainter extends CustomPainter {
 
   // Level axis (device dB): quieter/better at the top, louder/worse at the bottom
   // -- the same orientation a clinical audiogram uses for dB HL.
-  static const _dbTop = -80.0;
+  static const _dbTop = -120.0;
   static const _dbBottom = 0.0;
-  static const _dbGrid = <double>[-80, -60, -40, -20, 0];
+  static const _dbGrid = <double>[-120, -100, -80, -60, -40, -20, 0];
 
   @override
   void paint(Canvas canvas, Size size) {

@@ -50,7 +50,10 @@ class _NodeCardState extends State<NodeCard> {
   NodeSession get node => widget.node;
   WsServer get server => widget.server;
 
-  static const double _dbMin = -80;
+  // Must match config.DB_FLOOR / DB_CEILING on the node. The floor is a clamp,
+  // not a mute: the node still emits a real (very quiet) tone at -120 dB, so a
+  // subject can keep stepping down instead of hitting sudden digital silence.
+  static const double _dbMin = -120;
   static const double _dbMax = 0;
   static const double _dbStep = 5;
 
