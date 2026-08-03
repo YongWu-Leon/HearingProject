@@ -303,18 +303,46 @@ class _RecordsScreenState extends State<RecordsScreen> {
     return Container(
       color: complete ? nodeColor : const Color(0xFF78909C),
       padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 8),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Icon(complete ? Icons.check : Icons.info_outline, size: 16, color: fg),
-          const SizedBox(width: 7),
-          Text(complete ? 'Threshold' : 'Incomplete (${t.reason ?? 'unknown'})',
-              style: TextStyle(color: fg, fontSize: 13, fontWeight: FontWeight.w500)),
-          const Spacer(),
-          Text(
-            complete ? '${t.thresholdDb!.toStringAsFixed(1)} dB' : '-',
-            style: TextStyle(
-                color: fg, fontSize: 14, fontWeight: FontWeight.bold),
+          Row(
+            children: [
+              Icon(complete ? Icons.check : Icons.info_outline,
+                  size: 16, color: fg),
+              const SizedBox(width: 7),
+              Text(
+                  complete
+                      ? 'Threshold'
+                      : 'Incomplete (${t.reason ?? 'unknown'})',
+                  style: TextStyle(
+                      color: fg, fontSize: 13, fontWeight: FontWeight.w500)),
+              const Spacer(),
+              Text(
+                complete ? '${t.thresholdDb!.toStringAsFixed(1)} dB' : '-',
+                style: TextStyle(
+                    color: fg, fontSize: 14, fontWeight: FontWeight.bold),
+              ),
+            ],
           ),
+          // Flagged, never withheld: the result stands, and a reader can see that
+          // the room was louder than the limit while it was being measured.
+          if (t.ambientOverLimit) ...[
+            const SizedBox(height: 4),
+            Row(
+              children: [
+                Icon(Icons.warning_amber_rounded, size: 15, color: fg),
+                const SizedBox(width: 7),
+                Text(
+                  t.ambientPeakDb == null
+                      ? 'Ambient noise over limit'
+                      : 'Ambient noise over limit  '
+                          '(peak ${t.ambientPeakDb!.round()} dB)',
+                  style: TextStyle(color: fg, fontSize: 11),
+                ),
+              ],
+            ),
+          ],
         ],
       ),
     );

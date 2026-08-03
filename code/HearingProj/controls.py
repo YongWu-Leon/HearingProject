@@ -51,7 +51,16 @@ def handle_play(app_state, player, msg):
             uplink.send("error", code="BAD_VOLUME", detail=f"v={msg.get('v')!r}", seq=seq)
             return
     else:
+        # No level in the command at all. Falling back to whatever this node last
+        # used is the only safe thing to do, but it must never be silent: a node
+        # running older code once ignored a level field it did not recognise and
+        # quietly played every tone at its own default, which looked identical to
+        # the phone having asked for that default. Say so, and tell the phone.
         db = app_state['current_db']
+        detail = (f"play_tone carried neither level_db nor v; "
+                  f"fell back to this node's current level {db:.1f} dB")
+        print(f"[warn] {detail}")
+        uplink.send("error", code="NO_LEVEL", detail=detail, seq=seq)
 
     ear = str(msg.get('ear', 'both'))
     if ear not in ('L', 'left', 'R', 'right', 'both'):

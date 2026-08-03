@@ -42,6 +42,27 @@ class AmbientMonitor extends ChangeNotifier {
   /// True once at least one reading has been smoothed.
   bool get hasReading => _filter.hasEstimate;
 
+  // --- per-test window -----------------------------------------------------
+  // A single reading taken when a test ends says little: the room may have been
+  // quiet at that instant and loud throughout. So each test opens a window here
+  // and the loudest smoothed level inside it is what gets recorded with the
+  // result. Tests are never blocked -- the environment is reported, not policed,
+  // and whether to keep a noisy measurement is a decision for analysis.
+
+  double? _windowPeakDb;
+  bool _windowExceeded = false;
+
+  /// Loudest smoothed level seen since [beginWindow], or null if none.
+  double? get windowPeakDb => _windowPeakDb;
+
+  /// Whether [warnDb] was exceeded at any point in the current window.
+  bool get windowExceeded => _windowExceeded;
+
+  void beginWindow() {
+    _windowPeakDb = null;
+    _windowExceeded = false;
+  }
+
   /// Request microphone permission and begin monitoring. Safe to call twice.
   Future<void> start() async {
     if (_running) return;
@@ -67,6 +88,10 @@ class AmbientMonitor extends ChangeNotifier {
     final z = reading.meanDecibel;
     if (z.isNaN || z.isInfinite) return;
     _smoothed = _filter.update(z);
+    if (_windowPeakDb == null || _smoothed > _windowPeakDb!) {
+      _windowPeakDb = _smoothed;
+    }
+    if (_smoothed > warnDb) _windowExceeded = true;
     notifyListeners();
   }
 

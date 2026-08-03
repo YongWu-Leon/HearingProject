@@ -124,6 +124,15 @@ class TestRecord {
   /// 'stopped'   = the operator ended it early; treat the level as provisional.
   final String? reason;
   final double? thresholdDb;
+
+  /// Loudest ambient level measured while this test ran, and whether it went
+  /// over the configured limit. Recorded rather than enforced: a portable
+  /// screener has no sound booth, so the honest thing is to say how quiet the
+  /// room actually was and let the analysis decide what to do about it.
+  /// Null on rows saved before ambient monitoring existed.
+  final double? ambientPeakDb;
+  final bool ambientOverLimit;
+
   final List<TestStep> steps;
 
   const TestRecord({
@@ -137,6 +146,8 @@ class TestRecord {
     this.endTs,
     this.reason,
     this.thresholdDb,
+    this.ambientPeakDb,
+    this.ambientOverLimit = false,
     this.steps = const [],
   });
 
@@ -147,6 +158,8 @@ class TestRecord {
     DateTime? endTs,
     String? reason,
     double? thresholdDb,
+    double? ambientPeakDb,
+    bool? ambientOverLimit,
     List<TestStep>? steps,
   }) =>
       TestRecord(
@@ -160,6 +173,8 @@ class TestRecord {
         endTs: endTs ?? this.endTs,
         reason: reason ?? this.reason,
         thresholdDb: thresholdDb ?? this.thresholdDb,
+        ambientPeakDb: ambientPeakDb ?? this.ambientPeakDb,
+        ambientOverLimit: ambientOverLimit ?? this.ambientOverLimit,
         steps: steps ?? this.steps,
       );
 
@@ -174,6 +189,8 @@ class TestRecord {
         'end_ts': endTs?.millisecondsSinceEpoch,
         'reason': reason,
         'threshold_db': thresholdDb,
+        'ambient_db': ambientPeakDb,
+        'ambient_over': ambientOverLimit ? 1 : 0,
       };
 
   static TestRecord fromDbMap(Map<String, Object?> m,
@@ -191,6 +208,8 @@ class TestRecord {
             : DateTime.fromMillisecondsSinceEpoch((m['end_ts'] as num).toInt()),
         reason: m['reason'] as String?,
         thresholdDb: (m['threshold_db'] as num?)?.toDouble(),
+        ambientPeakDb: (m['ambient_db'] as num?)?.toDouble(),
+        ambientOverLimit: ((m['ambient_over'] as num?)?.toInt() ?? 0) == 1,
         steps: steps,
       );
 }

@@ -27,7 +27,7 @@ class Db {
     final dir = await getApplicationDocumentsDirectory();
     return openDatabase(
       p.join(dir.path, 'hearing_results.db'),
-      version: 2,
+      version: 3,
       onCreate: (db, _) async {
         await db.execute('''
           CREATE TABLE tests (
@@ -40,7 +40,9 @@ class Db {
             start_ts      INTEGER NOT NULL,
             end_ts        INTEGER,
             reason        TEXT,
-            threshold_db  REAL
+            threshold_db  REAL,
+            ambient_db    REAL,
+            ambient_over  INTEGER
           )
         ''');
         await db.execute('''
@@ -64,6 +66,12 @@ class Db {
       onUpgrade: (db, oldV, _) async {
         if (oldV < 2) {
           await db.execute('ALTER TABLE tests ADD COLUMN patient_id INTEGER');
+        }
+        // v3 records how loud the room was during each test. Existing rows get
+        // NULL, which reads back as "not measured" rather than as "it was quiet".
+        if (oldV < 3) {
+          await db.execute('ALTER TABLE tests ADD COLUMN ambient_db REAL');
+          await db.execute('ALTER TABLE tests ADD COLUMN ambient_over INTEGER');
         }
       },
     );
@@ -160,13 +168,19 @@ class Db {
   String buildCsv(List<TestRecord> tests) {
     final b = StringBuffer()
       ..writeln('NodeID,Seq,Timestamp,Frequency_Hz,Ear,Step,Level_dB,'
-          'Change,Remaining_s,Reason,Threshold_dB');
+          'Change,Remaining_s,Reason,Threshold_dB,Ambient_dB,Ambient_over_limit');
     for (final t in tests) {
       final threshold = t.thresholdDb?.toStringAsFixed(1) ?? '';
+      // Ambient columns repeat on the group's last line only, beside the
+      // threshold they qualify, so one test still reads as one result.
+      final ambient = t.ambientPeakDb?.toStringAsFixed(1) ?? '';
+      final ambientOver = t.ambientPeakDb == null
+          ? ''
+          : (t.ambientOverLimit ? 'yes' : 'no');
       if (t.steps.isEmpty) {
         b.writeln('${t.nodeId},${t.seq},${_iso(t.startTs)},'
             '${t.freqHz.toStringAsFixed(0)},${t.ear},,,,,'
-            '${t.reason ?? ''},$threshold');
+            '${t.reason ?? ''},$threshold,$ambient,$ambientOver');
         continue;
       }
       for (final s in t.steps) {
@@ -175,7 +189,9 @@ class Db {
             '${s.db.toStringAsFixed(1)},${stepFromLabel(s.from)},'
             '${s.remainingS.toStringAsFixed(1)},'
             '${s.index == t.steps.length - 1 ? (t.reason ?? '') : ''},'
-            '${s.index == t.steps.length - 1 ? threshold : ''}');
+            '${s.index == t.steps.length - 1 ? threshold : ''},'
+            '${s.index == t.steps.length - 1 ? ambient : ''},'
+            '${s.index == t.steps.length - 1 ? ambientOver : ''}');
       }
     }
     return b.toString();

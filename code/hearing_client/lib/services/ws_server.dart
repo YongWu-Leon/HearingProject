@@ -9,6 +9,7 @@ import 'package:shelf_web_socket/shelf_web_socket.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
 import '../models/node_session.dart';
+import 'ambient_monitor.dart';
 import 'db.dart';
 import 'latency.dart';
 
@@ -35,6 +36,11 @@ class WsServer extends ChangeNotifier {
   /// Link-timing instrument. Kept out of the results database on purpose: it
   /// characterises the system, it is not part of anyone's screening result.
   final LatencyTracker latency = LatencyTracker();
+
+  /// Ambient-noise monitor, attached by the screen that owns it. Optional: with
+  /// no microphone permission there is simply nothing to record, and screening
+  /// carries on regardless.
+  AmbientMonitor? ambient;
 
   /// How often each node is probed for the clock offset that makes its
   /// timestamps comparable with the phone's. Frequent enough to track drift,
@@ -294,6 +300,8 @@ class WsServer extends ChangeNotifier {
         n.remainingS = 0;
         if (finalDb != null) n.levelDb = finalDb;
 
+        final ambientPeak = ambient?.windowPeakDb;
+        final ambientOver = ambient?.windowExceeded ?? false;
         final record = n.assembler.onToneDone(
           seq: seq,
           reason: reason,
@@ -304,7 +312,10 @@ class WsServer extends ChangeNotifier {
         // Only a tone that ran the countdown to the end is a real result. A tone
         // the operator stopped early is discarded entirely -- it never reaches
         // the history (per the operator's request).
-        if (reason == 'completed') _store(record);
+        if (reason == 'completed') {
+          _store(record?.copyWith(
+              ambientPeakDb: ambientPeak, ambientOverLimit: ambientOver));
+        }
 
         n.awaitingResult = false;
         n.timedOut = false;
@@ -368,6 +379,9 @@ class WsServer extends ChangeNotifier {
       freqHz: n.frequency,
       ear: n.ear,
     );
+    // Open a fresh ambient window so the level stored with this result describes
+    // this test only, not the room's whole history.
+    ambient?.beginWindow();
     latency.noteCommandSent(n.nodeId, seq, _nowMs());
     _send(n, {
       'type': 'play_tone',

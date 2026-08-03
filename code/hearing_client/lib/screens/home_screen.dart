@@ -33,6 +33,7 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _server.addListener(_onServerChanged);
+    _server.ambient = _ambient;
     _ambient.addListener(_onAmbient);
     _boot();
   }
