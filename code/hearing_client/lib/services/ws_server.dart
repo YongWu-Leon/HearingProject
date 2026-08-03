@@ -10,6 +10,7 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 
 import '../models/node_session.dart';
 import 'db.dart';
+import 'latency.dart';
 
 /// The phone is the hub. This runs the WebSocket server every node dials, owns
 /// the node registry, and turns the message stream into stored test records.
@@ -30,6 +31,20 @@ class WsServer extends ChangeNotifier {
   final Map<String, NodeSession> nodes = {};
   final List<LiveEvent> events = [];
   static const _maxEvents = 60;
+
+  /// Link-timing instrument. Kept out of the results database on purpose: it
+  /// characterises the system, it is not part of anyone's screening result.
+  final LatencyTracker latency = LatencyTracker();
+
+  /// How often each node is probed for the clock offset that makes its
+  /// timestamps comparable with the phone's. Frequent enough to track drift,
+  /// rare enough to be invisible next to the 5 s heartbeat.
+  static const _clockProbeEvery = Duration(seconds: 10);
+  DateTime _lastClockProbe = DateTime.fromMillisecondsSinceEpoch(0);
+
+  /// Monotonic-ish millisecond reading for latency arithmetic.
+  static double _nowMs() =>
+      DateTime.now().microsecondsSinceEpoch / 1000.0;
 
   String? listenAddress;
   String? lastError;
@@ -200,8 +215,30 @@ class WsServer extends ChangeNotifier {
         n.remainingS = _d(msg['remaining_s']) ?? 0;
         break;
 
+      case 'pong':
+        // Clock-offset probe closing. Both stamps travelled the same round trip,
+        // so this is the only place the node's clock becomes comparable to ours.
+        final sent = _d(msg['t_app_ms']);
+        final nodeMs = _d(msg['t_node_ms']);
+        if (sent != null && nodeMs != null) {
+          latency.offsetFor(nodeId).update(
+                sentAppMs: sent,
+                nodeMs: nodeMs,
+                receivedAppMs: _nowMs(),
+              );
+        }
+        return; // nothing user-visible changed
+
+      case 'audio_latency':
+        // The node measured this locally (press -> first chunk at the new level),
+        // so it arrives ready to use, with no clock conversion needed.
+        final ms = _d(msg['ms']);
+        if (ms != null) latency.add(nodeId, LatencyKind.audioApply, ms);
+        return;
+
       case 'tone_started':
         final seq = _i(msg['seq']);
+        latency.noteCommandAcked(nodeId, seq, _nowMs());
         n.state = 'PLAYING';
         n.levelDb = _d(msg['db']) ?? n.levelDb;
         n.assembler.onToneStarted(seq: seq, db: n.levelDb);
@@ -217,6 +254,18 @@ class WsServer extends ChangeNotifier {
         final seq = _i(msg['seq']);
         final remaining = _d(msg['seg_remaining_s']) ?? 0;
         n.levelDb = _d(msg['current_db']) ?? n.levelDb;
+
+        // One-way press-to-phone latency, available only once the offset for this
+        // node is known -- before that the node's stamp cannot be placed on our
+        // timeline at all, so the sample is skipped rather than guessed.
+        final tNode = _d(msg['t_node_ms']);
+        if (tNode != null) {
+          final pressedAppMs = latency.offsetFor(nodeId).toAppMs(tNode);
+          if (pressedAppMs != null) {
+            latency.add(
+                nodeId, LatencyKind.buttonOneWay, _nowMs() - pressedAppMs);
+          }
+        }
         n.assembler.onVolumeChanged(
           seq: seq,
           segDb: _d(msg['seg_db']),
@@ -319,6 +368,7 @@ class WsServer extends ChangeNotifier {
       freqHz: n.frequency,
       ear: n.ear,
     );
+    latency.noteCommandSent(n.nodeId, seq, _nowMs());
     _send(n, {
       'type': 'play_tone',
       'seq': seq,
@@ -372,6 +422,19 @@ class WsServer extends ChangeNotifier {
   void _onTick() {
     var changed = false;
     final now = DateTime.now();
+
+    // Clock-offset probe. Sent on the 1 Hz housekeeping tick rather than on its
+    // own timer so it cannot outlive the server, and only to nodes that are
+    // actually connected.
+    if (now.difference(_lastClockProbe) >= _clockProbeEvery) {
+      _lastClockProbe = now;
+      for (final n in nodes.values) {
+        if (n.channel != null) {
+          _send(n, {'type': 'ping', 't_app_ms': _nowMs()});
+        }
+      }
+    }
+
     for (final n in nodes.values) {
       // Safety net only: normally tone_done re-enables Play. This covers a node
       // that died mid-tone, so the operator is never stuck with a dead button.

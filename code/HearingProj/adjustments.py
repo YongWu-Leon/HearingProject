@@ -18,6 +18,8 @@ The Flask route wrappers are gone (there is no HTTP control plane any more); thi
 is now called directly by button_handler, and by node_client if the phone ever
 sends a volume command.
 """
+import time
+
 import config
 import records
 import tone_clock
@@ -31,6 +33,15 @@ def apply_delta(app_state, delta, source):
     view (X = lowered = light red, Y = raised = light green).
     Returns the new dB value.
     """
+    # Node-clock stamp for this press, used for two latency measurements:
+    #   - the phone converts it to its own clock (via the ping/pong offset) to get
+    #     the one-way press-to-phone latency;
+    #   - the audio loop subtracts it to get press-to-audible latency (see audio.py).
+    # It is taken here rather than in button_handler, so it excludes the GPIO poll
+    # interval; that part is bounded by config.POLL_INTERVAL and reported separately.
+    press_ms = time.monotonic() * 1000.0
+    app_state['db_change_at_ms'] = press_ms
+
     # Capture the segment that is ending BEFORE anything is mutated.
     prev_db = app_state.get('seg_db', app_state['current_db'])
     prev_from = app_state.get('seg_from', 'init')
@@ -60,7 +71,8 @@ def apply_delta(app_state, delta, source):
                 # The segment that just closed = one row in the phone's records view.
                 seg_db=round(prev_db, 2),
                 seg_from=prev_from,
-                seg_remaining_s=round(left, 2))
+                seg_remaining_s=round(left, 2),
+                t_node_ms=round(press_ms, 3))
     return new_db
 
 

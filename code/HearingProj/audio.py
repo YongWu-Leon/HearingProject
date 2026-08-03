@@ -137,6 +137,9 @@ def play_tone(app_state, frequency, ear='both', seq=None):
                     db=round(app_state['current_db'], 2), ear=ear)
 
         start = 0
+        # Tracks which level the previous chunk was built with, so the first chunk
+        # that carries a NEW level can be timestamped (see the latency block below).
+        last_amp_db = app_state['current_db']
         while app_state['is_playing']:
             now = time.monotonic()
             deadline = min(app_state['tone_deadline'], hard_deadline)
@@ -159,7 +162,26 @@ def play_tone(app_state, frequency, ear='both', seq=None):
             if play_right:
                 stereo[1::2] = wave
 
-            stereo *= config.db_to_linear(app_state['current_db'])   # real-time dB
+            cur_db = app_state['current_db']
+            stereo *= config.db_to_linear(cur_db)                     # real-time dB
+
+            # Press-to-audio latency: the time from the X/Y press (stamped in
+            # adjustments.apply_delta) to the first chunk BUILT with the new level.
+            # It is reported once per change rather than accumulated, so the phone
+            # gets one clean sample per press.
+            #
+            # NOTE what this does and does not cover: it ends when the chunk is
+            # handed to PyAudio, so it excludes the DAC's own output buffering. The
+            # dominant term is the chunk period (CHUNK_SIZE / SAMPLE_RATE).
+            if cur_db != last_amp_db:
+                pressed_at = app_state.pop('db_change_at_ms', None)
+                if pressed_at is not None:
+                    uplink.send("audio_latency",
+                                seq=seq,
+                                ms=round(time.monotonic() * 1000.0 - pressed_at, 3),
+                                db=round(cur_db, 2))
+                last_amp_db = cur_db
+
             stream.write(stereo.tobytes())
             start += n
 

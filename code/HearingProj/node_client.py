@@ -27,6 +27,7 @@ Run: python3 node_client.py
 import asyncio
 import json
 import random
+import time
 
 import websockets
 
@@ -158,6 +159,16 @@ class NodeClient:
                 await loop.run_in_executor(
                     None, controls.handle_stop, self.app_state, self.player, msg)
             elif mtype == "ping":
+                # Clock-offset probe. The phone cannot compare its own timestamps
+                # with this node's directly -- the two clocks are unrelated -- so it
+                # sends its own stamp and we echo it back beside ours. From t_app
+                # (sent), t_node (here) and the arrival time, the phone solves for
+                # the offset and can then convert any node stamp into its own clock.
+                # Heartbeat is still queued so an older phone that used ping purely
+                # as a liveness poke keeps working.
+                uplink.send("pong",
+                            t_app_ms=msg.get("t_app_ms"),
+                            t_node_ms=round(time.monotonic() * 1000.0, 3))
                 self._queue_heartbeat()
             else:
                 # An unknown type must be ignored, not fatal: the phone may be a

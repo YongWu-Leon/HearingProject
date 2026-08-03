@@ -6,6 +6,7 @@ import '../services/foreground.dart';
 import '../services/ws_server.dart';
 import '../theme.dart';
 import '../widgets/node_card.dart';
+import 'latency_screen.dart';
 import 'records_screen.dart';
 
 /// Main screen: the hub status, one card per node, and a live event feed.
@@ -96,6 +97,15 @@ class _HomeScreenState extends State<HomeScreen> {
             icon: const Icon(Icons.folder_open),
             tooltip: 'All records',
             onPressed: () => _openRecords(),
+          ),
+          IconButton(
+            icon: const Icon(Icons.timer_outlined),
+            tooltip: 'Latency measurements',
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                  builder: (_) => LatencyScreen(server: _server)),
+            ),
           ),
           const Padding(
             padding: EdgeInsets.only(right: 12),
