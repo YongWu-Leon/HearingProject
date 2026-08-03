@@ -279,10 +279,14 @@ class _AudiogramPainter extends CustomPainter {
 
   _AudiogramPainter(this.series);
 
-  // Frequency axis (log), the audiometric octaves.
+  // Frequency axis (log). It spans the full ladder the app can dial in, not just
+  // the clinical octaves -- a threshold measured at 10 kHz has to land on the
+  // chart rather than being clamped onto the right-hand edge.
   static const _fMin = 125.0;
-  static const _fMax = 8000.0;
-  static const _labelFreqs = <double>[125, 250, 500, 1000, 2000, 4000, 8000];
+  static const _fMax = 10000.0;
+  static const _labelFreqs = <double>[
+    125, 250, 500, 1000, 2000, 4000, 8000, 10000
+  ];
 
   // Level axis (device dB): quieter/better at the top, louder/worse at the bottom
   // -- the same orientation a clinical audiogram uses for dB HL.
@@ -328,11 +332,11 @@ class _AudiogramPainter extends CustomPainter {
     }
     canvas.drawRect(plot, axis);
 
-    _drawSeries(canvas, series['R'], _red, _Marker.circle, xFor, yFor);
-    _drawSeries(canvas, series['L'], _blue, _Marker.cross, xFor, yFor);
+    _drawSeries(canvas, series['R'], _red, _Marker.circle, xFor, yFor, plot);
+    _drawSeries(canvas, series['L'], _blue, _Marker.cross, xFor, yFor, plot);
     for (final e in series.entries) {
       if (e.key == 'R' || e.key == 'L') continue;
-      _drawSeries(canvas, e.value, _grey, _Marker.dot, xFor, yFor);
+      _drawSeries(canvas, e.value, _grey, _Marker.dot, xFor, yFor, plot);
     }
   }
 
@@ -343,6 +347,7 @@ class _AudiogramPainter extends CustomPainter {
     _Marker marker,
     double Function(double) xFor,
     double Function(double) yFor,
+    Rect plot,
   ) {
     if (data == null || data.isEmpty) return;
     final freqs = data.keys.toList()..sort();
@@ -358,9 +363,22 @@ class _AudiogramPainter extends CustomPainter {
       if (prev != null) canvas.drawLine(prev, pt, line);
       prev = pt;
     }
+    // Markers and value labels go on after the whole line, so the line never
+    // crosses over a marker or its text.
     for (final f in freqs) {
-      final db = data[f]!.clamp(_dbTop, _dbBottom);
-      _marker(canvas, Offset(xFor(f), yFor(db)), color, marker);
+      final raw = data[f]!;
+      final db = raw.clamp(_dbTop, _dbBottom);
+      final pt = Offset(xFor(f), yFor(db));
+      _marker(canvas, pt, color, marker);
+
+      // The level in dB, printed by the point so it can be read off the chart
+      // instead of estimated against the axis. It sits below the marker, and
+      // flips above when the point is too close to the bottom edge to fit.
+      final t = _valueLabel(raw.round().toString(), color);
+      final below = pt.dy + 9 + t.height <= plot.bottom;
+      final dx = (pt.dx - t.width / 2)
+          .clamp(plot.left + 1, plot.right - t.width - 1);
+      t.paint(canvas, Offset(dx, below ? pt.dy + 9 : pt.dy - 9 - t.height));
     }
   }
 
@@ -369,7 +387,7 @@ class _AudiogramPainter extends CustomPainter {
       ..color = color
       ..strokeWidth = 2
       ..style = PaintingStyle.stroke;
-    const r = 5.0;
+    const r = 6.0;
     switch (m) {
       case _Marker.circle:
         c.drawCircle(o, r, stroke);
@@ -379,7 +397,10 @@ class _AudiogramPainter extends CustomPainter {
         c.drawLine(o.translate(-r, r), o.translate(r, -r), stroke);
         break;
       case _Marker.dot:
-        c.drawCircle(o, r - 1, Paint()..color = color);
+        // An outlined ring on a white centre, not a solid blob: the exact level
+        // is read off the ring's centre, which a filled dot hides.
+        c.drawCircle(o, r - 1, Paint()..color = Colors.white);
+        c.drawCircle(o, r - 1, stroke);
         break;
     }
   }
@@ -388,6 +409,14 @@ class _AudiogramPainter extends CustomPainter {
         text: TextSpan(
             text: s,
             style: const TextStyle(color: Color(0xFF546E7A), fontSize: 10)),
+        textDirection: TextDirection.ltr,
+      )..layout();
+
+  TextPainter _valueLabel(String s, Color color) => TextPainter(
+        text: TextSpan(
+            text: s,
+            style: TextStyle(
+                color: color, fontSize: 10, fontWeight: FontWeight.w600)),
         textDirection: TextDirection.ltr,
       )..layout();
 
