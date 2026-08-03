@@ -332,7 +332,7 @@ class _NodeCardState extends State<NodeCard> {
 
   Widget _frequencyRow(BuildContext context, bool locked) {
     return _controlRow(
-      label: locked ? 'Frequency (locked during test)' : 'Frequency',
+      label: 'Frequency',
       field: _numberField(
         controller: _freqCtl,
         focusNode: _freqFocus,
@@ -370,7 +370,7 @@ class _NodeCardState extends State<NodeCard> {
 
   Widget _levelRow(BuildContext context, bool locked) {
     return _controlRow(
-      label: locked ? 'Level (subject is adjusting)' : 'Level',
+      label: 'Level',
       field: _numberField(
         controller: _levelCtl,
         focusNode: _levelFocus,

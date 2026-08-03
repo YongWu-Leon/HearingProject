@@ -23,9 +23,9 @@ extension LatencyKindLabel on LatencyKind {
       case LatencyKind.commandRoundTrip:
         return 'Command round-trip';
       case LatencyKind.buttonOneWay:
-        return 'Button to phone (one-way)';
+        return 'Button to phone';
       case LatencyKind.audioApply:
-        return 'Press to audio (node-local)';
+        return 'Press to audio';
     }
   }
 

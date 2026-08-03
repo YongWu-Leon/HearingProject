@@ -18,8 +18,8 @@ import '../theme.dart';
 ///   - button one-way depends on the ping/pong clock offset, and is blank until
 ///     that offset is established;
 ///   - press-to-audio is measured by the node against its own clock.
-/// The part no software can see -- finger contact to the GPIO poll noticing it --
-/// is bounded by the node's poll interval and stated in the notes below.
+/// One part is invisible to software and so appears in none of them: finger
+/// contact until the GPIO poll notices it, bounded by the node's poll interval.
 class LatencyScreen extends StatefulWidget {
   final WsServer server;
 
@@ -101,7 +101,6 @@ class _LatencyScreenState extends State<LatencyScreen> {
                 children: [
                   _overall(),
                   for (final id in nodeIds) _nodeCard(id),
-                  _notes(),
                 ],
               ),
       ),
@@ -192,9 +191,8 @@ class _LatencyScreenState extends State<LatencyScreen> {
               ),
               Text(
                 offset.known
-                    ? 'clock synced (best RTT '
-                        '${offset.bestRttMs.toStringAsFixed(1)} ms)'
-                    : 'clock not synced yet',
+                    ? 'clock synced ${offset.bestRttMs.round()} ms'
+                    : 'syncing clock',
                 style: TextStyle(
                     color: offset.known ? AppTheme.online : Colors.white38,
                     fontSize: 11),
@@ -221,50 +219,17 @@ class _LatencyScreenState extends State<LatencyScreen> {
             const Text('no samples',
                 style: TextStyle(color: Colors.white38, fontSize: 12))
           else
+            // Median and p95 are what characterise a link; mean, min and max add
+            // little on screen and are all in the CSV export anyway.
             Text(
-              'n=${s.count}   mean ${s.meanMs.toStringAsFixed(1)}   '
-              'median ${s.medianMs.toStringAsFixed(1)}   '
-              'p95 ${s.p95Ms.toStringAsFixed(1)}   '
-              'min ${s.minMs.toStringAsFixed(1)}   '
-              'max ${s.maxMs.toStringAsFixed(1)}  ms',
+              'n=${s.count}    median ${s.medianMs.round()}    '
+              'p95 ${s.p95Ms.round()} ms',
               style: const TextStyle(
-                  color: Colors.white, fontSize: 12, fontWeight: FontWeight.w500),
+                  color: Colors.white, fontSize: 13, fontWeight: FontWeight.w500),
             ),
         ],
       ),
     );
   }
 
-  Widget _notes() {
-    return Container(
-      decoration: AppTheme.panelBox(),
-      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-      child: const Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text('How to read these',
-              style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 13,
-                  fontWeight: FontWeight.bold)),
-          SizedBox(height: 6),
-          Text(
-            'Command round-trip is measured on this phone alone, so it needs no '
-            'clock agreement — trust it first. It is also what the operator '
-            'feels between pressing Play and the tone existing.\n\n'
-            'Button one-way relies on the ping/pong clock offset and stays blank '
-            'until that offset is established, which takes a few seconds after a '
-            'node connects.\n\n'
-            'Press to audio is measured by the node against its own clock and '
-            'ends when the chunk is handed to the audio device, so it excludes '
-            'the DAC\'s own output buffering.\n\n'
-            'Not measurable in software: finger contact until the GPIO poll '
-            'notices it. That is bounded by the node\'s poll interval, and the '
-            'button fires on release rather than on press.',
-            style: TextStyle(color: Colors.white70, fontSize: 12, height: 1.5),
-          ),
-        ],
-      ),
-    );
-  }
 }

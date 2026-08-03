@@ -25,6 +25,10 @@ def handle_play(app_state, player, msg):
     f defaults to the current frequency, ear to both.
     """
     seq = msg.get('seq')
+    # Log the command as received. When a level fails to arrive the node falls
+    # back to its own default, which looks identical to the phone having asked
+    # for that default -- so the raw message is the only way to tell them apart.
+    print(f"play_tone in: {msg}")
 
     try:
         f = float(msg.get('f', app_state['current_frequency']))
