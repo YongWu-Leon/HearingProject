@@ -43,6 +43,8 @@ venv/
 # ---------- Runtime output ----------
 hearing_debug.csv
 results.csv
+# verify_signal.py output (regenerate by running the script)
+signal_check_out/
 
 # ---------- OS junk ----------
 .DS_Store
