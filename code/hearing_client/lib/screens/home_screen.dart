@@ -14,8 +14,8 @@ import 'records_screen.dart';
 /// The phone no longer picks a board to talk to -- it IS the hub, and nodes
 /// appear here by themselves as they register on its hotspot. Each card holds
 /// its own frequency / volume / ear, so nodes can be driven independently
-/// (start node 1, then start node 2 on a different tone) or together via
-/// sync mode plus Play All.
+/// (start node 1, then start node 2 on a different tone), or started together
+/// with Play All -- which still sends each node its own card's parameters.
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 

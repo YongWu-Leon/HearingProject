@@ -18,9 +18,9 @@ import '../theme.dart';
 /// readout.
 ///
 /// Stateful so it can own the two text controllers and keep them in sync with the
-/// node's values -- when a heartbeat repaints the card, or "copy settings" writes
-/// new values in from another card, the boxes must follow without wiping whatever
-/// the operator is mid-way through typing.
+/// node's values -- when a heartbeat repaints the card, or the subject's X/Y
+/// presses move the level during playback, the boxes must follow without wiping
+/// whatever the operator is mid-way through typing.
 class NodeCard extends StatefulWidget {
   final NodeSession node;
   final WsServer server;
@@ -74,8 +74,8 @@ class _NodeCardState extends State<NodeCard> {
   }
 
   /// Pull the node's current values into the text boxes, but never while the box
-  /// is focused (that would fight the operator's typing). This is what makes
-  /// "copy settings", the sliders, and live X/Y updates all show up in the boxes.
+  /// is focused (that would fight the operator's typing). This is what makes the
+  /// sliders and the live X/Y updates show up in the boxes.
   void _syncFields() {
     if (!_freqFocus.hasFocus) {
       final t = node.frequency.toStringAsFixed(0);

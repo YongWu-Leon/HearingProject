@@ -398,8 +398,9 @@ class WsServer extends ChangeNotifier {
     _send(n, {'type': 'stop', 'seq': n.activeSeq});
   }
 
-  /// Fan out to every selected node. Each still gets its own parameters unless
-  /// the operator has copied them across with [applyToSelected].
+  /// Fan out to every selected node. This starts them together but does not make
+  /// them alike: each node is sent the parameters on its own card, so concurrent
+  /// subjects can be tested at different frequencies, levels and ears.
   void playSelected() {
     for (final n in nodes.values) {
       if (n.selected && n.online && !n.awaitingResult) play(n);
