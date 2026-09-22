@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 
-/// The app's palette, unchanged from v1 so the rebuilt screens still look like
-/// the same product: cyan page, dark-cyan chrome, amber for the volume control
-/// and for "something is happening".
+/// App colour palette: cyan page, dark-cyan chrome, amber for volume/activity.
 class AppTheme {
   static const cyan = Color(0xFF00BCD4);
   static const darkCyan = Color(0xFF0097A7);
@@ -10,7 +8,7 @@ class AppTheme {
   static const paleCyan = Color(0xFFE0F7FA);
   static const amber = Color(0xFFFFC107);
 
-  /// Translucent white panels over the cyan page -- the v1 card treatment.
+  /// Translucent white panel background over the cyan page.
   static const panel = Color(0x1AFFFFFF); // white10
   static const panelBorder = Color(0x4DFFFFFF); // white30
   static const panelDim = Color(0x0FFFFFFF);
@@ -18,9 +16,8 @@ class AppTheme {
   static const online = Color(0xFFB9F6CA);
   static const offline = Color(0x66FFFFFF);
 
-  /// Row backgrounds in the records view. The subject's own actions are colour
-  /// coded: quieter is red, louder is green, and the level the operator set is
-  /// plain white.
+  /// Row backgrounds in the records view: quieter is red, louder is green,
+  /// operator-set level is plain white.
   static const rowInitial = Colors.white;
   static const rowLowered = Color(0xFFFFEBEE);
   static const rowRaised = Color(0xFFE8F5E9);
@@ -31,10 +28,8 @@ class AppTheme {
   static const rowLoweredIcon = Color(0xFFC62828);
   static const rowRaisedIcon = Color(0xFF2E7D32);
 
-  /// A soft signature colour per node, so node01 / node02 / node03 are told
-  /// apart at a glance without the palette shouting -- used for the border and
-  /// tinted surfaces around each test group in the records view, and the little
-  /// square by the node name on the main screen. Pastels, deliberately gentle.
+  /// Soft signature colour per node (node01/02/03), used for record-group
+  /// borders and the node badge on the main screen.
   static const Map<String, Color> _nodeColors = {
     'node01': Color(0xFFFFCC80), // soft amber
     'node02': Color(0xFFB39DDB), // soft lavender
@@ -74,7 +69,7 @@ class AppTheme {
         borderRadius: BorderRadius.circular(radius),
       );
 
-  /// Standard frequency ladder, unchanged from v1.
+  /// Frequency ladder (Hz) offered by the app.
   static const List<double> frequencies = [
     125, 250, 500, 750, 1000, 1500,
     2000, 3000, 4000, 6000, 8000, 10000,

@@ -4,22 +4,12 @@
   X = GPIO16 short press: volume -10 dB
   Y = GPIO24 short press: volume +5 dB
 
-These ARE the subject's response keys. The subject presses X until the tone
-disappears and Y until it comes back, converging on their quietest audible level;
-each press restarts the 15 s countdown so the tone keeps playing while they hunt.
-Where they settle, once the countdown finally expires, is the threshold result.
-See adjustments.apply_delta for what one press does.
+Presses are ignored unless app_state['is_playing'] is true (single source of
+truth from node_client). Uses a polling thread rather than GPIO interrupts,
+for reliability on older Pi Zero W kernels.
 
-Presses are ignored unless app_state['is_playing'] is true. That guard reads the
-single source of truth in node_client -- no module keeps its own playback flag.
-(A separate copy of that flag is what once produced phantom entries.)
-
-Uses a polling thread (not GPIO interrupts): more reliable on older Pi Zero W
-kernels, and lets rapid presses be handled one by one.
-
-A and B are NOT handled here -- they belong to the separate root power_button
-service (A = hold to switch network, B = hold to shut down). The two processes use
-different pins and do not conflict.
+A and B belong to the separate root power_button service (network toggle /
+shutdown) on different pins; not handled here.
 """
 import threading
 import time
@@ -59,8 +49,6 @@ def _fire(delta, event):
     if _app_state is None:
         return
     if not _app_state.get('is_playing'):
-        # Nothing is playing, so there is no segment to close and no countdown to
-        # restart. Silently ignore rather than logging a phantom row.
         return
     adjustments.apply_delta(_app_state, delta, event)
 

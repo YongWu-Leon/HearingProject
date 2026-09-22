@@ -1,28 +1,18 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 
-/// Keeps the WebSocket server alive when the app is not in the foreground.
+/// Keeps the WebSocket server alive when the app is backgrounded.
 ///
-/// Without this, Android suspends the process on backgrounding or screen lock,
-/// the listening socket is torn down, and every node silently drops off and
-/// starts its reconnect backoff. The persistent notification is the price
-/// Android charges for a socket that keeps listening.
+/// Without a foreground service, Android suspends the process and every node
+/// drops off. The WiFi lock is needed too, or Android dozes the hotspot's WiFi
+/// stack. Android 15+ caps a `dataSync` service at ~6h/24h, so [update]
+/// restarts the service if it finds it stopped.
 ///
-/// The WiFi lock matters as much as the service itself: on a phone acting as a
-/// hotspot, Android will happily doze the WiFi stack.
-///
-/// Android 15+ caps a `dataSync` foreground service at roughly 6 hours per 24 h
-/// and then stops it. A screening session is nowhere near that, but an app left
-/// open all day can hit it, so [update] re-starts the service if it finds it
-/// gone rather than silently staying dead.
-///
-/// VERIFY ON A REAL DEVICE -- background behaviour cannot be tested on desktop
-/// or in an emulator with any confidence.
+/// Verify on a real device -- not testable on desktop/emulator.
 class Foreground {
   static bool _initialised = false;
 
-  /// update() is called on every inbound node message; without this the plugin
-  /// channel would be hit several times a second during a test.
+  /// Throttles update(), which is called on every inbound node message.
   static DateTime _lastCheck = DateTime.fromMillisecondsSinceEpoch(0);
   static const _checkEvery = Duration(seconds: 10);
 
@@ -55,9 +45,7 @@ class Foreground {
   static Future<void> start({required int nodeCount}) async {
     await init();
     try {
-      // Android 13+ will not show the service notification without an explicit
-      // grant, and a foreground service with no notification cannot stay in the
-      // foreground -- so this permission is what actually keeps nodes connected.
+      // Android 13+ needs an explicit grant to show the service notification.
       final permission = await FlutterForegroundTask.checkNotificationPermission();
       if (permission != NotificationPermission.granted) {
         await FlutterForegroundTask.requestNotificationPermission();
@@ -82,8 +70,7 @@ class Foreground {
     _lastCheck = now;
     try {
       if (!await FlutterForegroundTask.isRunningService) {
-        // The system stopped it (Android 15+ dataSync timeout, or the OEM
-        // battery manager). Bring it back rather than losing every node.
+        // System stopped it (dataSync timeout or OEM battery manager); restart.
         debugPrint('[fg] service was stopped by the system, restarting');
         await start(nodeCount: nodeCount);
         return;

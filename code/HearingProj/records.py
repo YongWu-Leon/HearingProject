@@ -1,22 +1,12 @@
 # records.py
-"""Local CSV event log -- OFFLINE BACKUP ONLY.
-
-The authoritative record now lives in the phone's SQLite database: every event
-written here is also pushed to the phone over the WebSocket link, and the phone is
-what the operator reads and exports. This file exists so that data is not lost
-while the link is down (there is no store-and-forward replay by design), and as a
-field debugging aid.
+"""Local CSV event log -- OFFLINE BACKUP ONLY. The phone's SQLite database is
+the authoritative record; this file guards against data loss while the link
+is down and serves as a field debugging aid.
 
 Columns: NodeID, Timestamp, Frequency, Volume_dB, Volume_linear, Channel, Event, Remaining_s
-Event in {play, X, Y, stop, end}
-  play  playback started at the level the phone sent
-  X / Y subject pressed a response key; Remaining_s is what was left on the
-        countdown at that moment, i.e. how long that level had been held
-  end   countdown expired -- this row's Volume_dB is the threshold result
-  stop  operator stopped the tone early
-
-Old-format files (which had a BoardID column and no Remaining_s) are not migrated;
-delete any stale results.csv at deploy time.
+Event in {play, X, Y, stop, end}: play=started, X/Y=response key press
+(Remaining_s = countdown left when pressed), end=countdown expired (threshold
+result), stop=operator stopped early.
 """
 import csv
 import os
@@ -50,7 +40,7 @@ def log_event(app_state, event, remaining=None):
                 writer.writerow(_HEADER)
             writer.writerow(row)
     except Exception as e:
-        # A disk write failure must not break playback / button handling; just log it.
+        # Must not break playback/button handling on a write failure.
         print(f"[records] CSV write failed: {e}")
 
 

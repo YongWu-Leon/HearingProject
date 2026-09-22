@@ -1,14 +1,9 @@
 #!/usr/bin/env python3
-"""Tests for the play_tone command handler.  Run:  python3 test_controls.py
+"""Tests for the play_tone command handler. Run: python3 test_controls.py
 
-No pytest on the target, so this is plain asserts with a tiny runner. It imports
-nothing that needs hardware, which is what lets it run on a development machine.
-
-The case that matters most here is the LAST one. A node running older code once
-failed to recognise the level field the phone was sending and silently fell back
-to its own default, so every tone played at that default while the phone believed
-its request had been honoured. Nothing errored, and the node's own log looked
-correct. These tests pin the behaviour that makes that failure visible.
+Plain asserts with a tiny runner (no pytest on the target); imports nothing
+that needs hardware. test_missing_level_is_reported_not_silent pins the
+requirement that a missing level field must surface an error, not fail silent.
 """
 import config
 import controls
@@ -51,7 +46,7 @@ def drain_uplink():
         out.append(msg)
 
 
-# ---------------------------------------------------------------- test cases
+# Test cases
 
 def test_level_db_is_used_as_sent():
     state, player = fresh_state(), FakePlayer()
@@ -77,7 +72,7 @@ def test_legacy_v_is_converted():
 
 
 def test_missing_level_is_reported_not_silent():
-    """The regression this file exists for."""
+    """Missing level must be reported, never silently defaulted."""
     state, player = fresh_state(current_db=-30.0), FakePlayer()
     drain_uplink()
     controls.handle_play(state, player, {
@@ -128,7 +123,7 @@ def test_stop_is_ignored_when_nothing_is_playing():
     assert player.calls == ['stop'], player.calls
 
 
-# --------------------------------------------------------------------- runner
+# Runner
 
 def main():
     tests = [v for k, v in sorted(globals().items()) if k.startswith('test_')]

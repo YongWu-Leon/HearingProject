@@ -7,20 +7,16 @@ import '../theme.dart';
 
 /// One node, one card.
 ///
-/// Collapsed it is a single row: link state, what it is playing, and the live
-/// level. Expanded it holds that node's OWN frequency / level / ear controls, so
-/// three nodes can run different tones at the same time.
+/// Collapsed: link state, current playback, live level. Expanded: that node's
+/// own frequency / level / ear controls, so nodes can run different tones
+/// concurrently.
 ///
-/// The frequency and level controls are the same shape: a fine text box plus a
-/// slider. The level is in dB now (not the old 0-100 volume) -- the slider moves
-/// in 5 dB steps, the box takes any value, and because that control also tracks
-/// the subject's live level during playback there is no separate "subject level"
-/// readout.
+/// Frequency and level controls share a shape: text box + slider. Level is in
+/// dB (slider steps of 5 dB, box takes any value) and doubles as the live
+/// subject-level readout during playback.
 ///
-/// Stateful so it can own the two text controllers and keep them in sync with the
-/// node's values -- when a heartbeat repaints the card, or the subject's X/Y
-/// presses move the level during playback, the boxes must follow without wiping
-/// whatever the operator is mid-way through typing.
+/// Stateful to own the text controllers and keep them synced with the node's
+/// values without wiping whatever the operator is mid-typing.
 class NodeCard extends StatefulWidget {
   final NodeSession node;
   final WsServer server;
@@ -50,9 +46,7 @@ class _NodeCardState extends State<NodeCard> {
   NodeSession get node => widget.node;
   WsServer get server => widget.server;
 
-  // Must match config.DB_FLOOR / DB_CEILING on the node. The floor is a clamp,
-  // not a mute: the node still emits a real (very quiet) tone at -120 dB, so a
-  // subject can keep stepping down instead of hitting sudden digital silence.
+  // Must match config.DB_FLOOR / DB_CEILING on the node.
   static const double _dbMin = -120;
   static const double _dbMax = 0;
   static const double _dbStep = 5;
@@ -73,9 +67,8 @@ class _NodeCardState extends State<NodeCard> {
     super.dispose();
   }
 
-  /// Pull the node's current values into the text boxes, but never while the box
-  /// is focused (that would fight the operator's typing). This is what makes the
-  /// sliders and the live X/Y updates show up in the boxes.
+  /// Syncs the node's values into the text boxes, skipping a focused box (would
+  /// fight the operator's typing).
   void _syncFields() {
     if (!_freqFocus.hasFocus) {
       final t = node.frequency.toStringAsFixed(0);
@@ -153,8 +146,7 @@ class _NodeCardState extends State<NodeCard> {
       child: Row(
         children: [
           Checkbox(
-            // Always toggleable, even offline: an offline node (e.g. one not set
-            // up yet) must still be de-selectable so it is skipped by Play all.
+            // Always toggleable, even offline, so it can be excluded from Play all.
             value: node.selected,
             onChanged: (v) {
               node.selected = v ?? false;
@@ -179,8 +171,7 @@ class _NodeCardState extends State<NodeCard> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Node name in its signature colour -- matches the record border
-                // colour, so which card goes with which history is obvious.
+                // Node name in its signature colour, matching its record border.
                 Row(
                   children: [
                     Container(
@@ -286,7 +277,7 @@ class _NodeCardState extends State<NodeCard> {
           const SizedBox(width: 5),
           _chip(AppTheme.earLabel(node.ear)),
           const SizedBox(width: 5),
-          // The number that moves while the subject hunts, during playback.
+          // Moves live while the subject hunts, during playback.
           _chip('${node.levelDb.toStringAsFixed(1)} dB', highlight: node.isPlaying),
         ],
       ),
@@ -318,8 +309,7 @@ class _NodeCardState extends State<NodeCard> {
       padding: const EdgeInsets.fromLTRB(10, 10, 10, 12),
       child: Column(
         children: [
-          // Once a test is in flight the tone is fixed: the only thing the phone
-          // can still do to the node is Stop. Frequency, level and ear all lock.
+          // Tone is fixed once a test is in flight; Stop is all that's left.
           _frequencyRow(context, node.awaitingResult),
           const SizedBox(height: 12),
           _levelRow(context, node.awaitingResult),
@@ -347,9 +337,8 @@ class _NodeCardState extends State<NodeCard> {
           }
         },
       ),
-      // Frequency is fixed for the whole test: changing it mid-tone would restart
-      // the hunt at a new pitch and invalidate the threshold, so the control is
-      // disabled while a test is in flight and never re-sends to a playing node.
+      // Disabled mid-test: changing frequency would restart the hunt and
+      // invalidate the threshold.
       slider: Slider(
         value: node.freqSliderIndex
             .toDouble()
@@ -376,8 +365,7 @@ class _NodeCardState extends State<NodeCard> {
         focusNode: _levelFocus,
         suffix: ' dB',
         allowSign: true,
-        // During a test the level tracks the subject's live X/Y adjustments; the
-        // operator can watch it but not change it. Only Stop affects the node.
+        // Tracks the subject's live X/Y adjustments during a test; watch-only.
         readOnly: locked,
         onSubmitted: (v) {
           final parsed = double.tryParse(v);
@@ -388,8 +376,7 @@ class _NodeCardState extends State<NodeCard> {
           }
         },
       ),
-      // No divisions: a typed fine value (e.g. -12) keeps its exact thumb
-      // position, while dragging snaps to whole 5 dB steps via the rounding.
+      // No divisions: typed values keep exact position; dragging rounds to 5 dB.
       slider: Slider(
         value: node.levelDb.clamp(_dbMin, _dbMax),
         min: _dbMin,
@@ -452,7 +439,7 @@ class _NodeCardState extends State<NodeCard> {
     final selected = node.ear == value;
     return Expanded(
       child: GestureDetector(
-        // Ear is part of the tone, so it is fixed once a test is in flight.
+        // Fixed once a test is in flight.
         onTap: locked
             ? null
             : () {

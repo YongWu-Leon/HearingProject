@@ -1,22 +1,10 @@
 # adjustments.py
 """dB volume adjustment -- the subject's response mechanism.
 
-X = -10 dB, Y = +5 dB. Volume is tracked as app_state['current_db'], clamped to
-[DB_FLOOR, DB_CEILING]. Changes take effect in real time on the tone that is
-already playing, because the playback loop re-reads current_db every chunk.
-
-This is how a test works: the subject presses X until the tone disappears and Y
-until it comes back, converging on their quietest audible level. Each press also
-restarts the 15 s countdown, so the tone keeps going while they hunt. When they
-stop pressing, the countdown runs out and where they landed is the threshold.
-
-Every press closes one "segment" and opens the next. A segment is one row in the
-phone's records table: its level, how it was reached (init / X / Y), and how much
-countdown was left when it ended.
-
-The Flask route wrappers are gone (there is no HTTP control plane any more); this
-is now called directly by button_handler, and by node_client if the phone ever
-sends a volume command.
+X = -10 dB, Y = +5 dB. Volume is app_state['current_db'], clamped to
+[DB_FLOOR, DB_CEILING] and applied live to the tone already playing. Each
+press closes one "segment" (one row in the phone's records table) and opens
+the next.
 """
 import time
 
@@ -33,12 +21,7 @@ def apply_delta(app_state, delta, source):
     view (X = lowered = light red, Y = raised = light green).
     Returns the new dB value.
     """
-    # Node-clock stamp for this press, used for two latency measurements:
-    #   - the phone converts it to its own clock (via the ping/pong offset) to get
-    #     the one-way press-to-phone latency;
-    #   - the audio loop subtracts it to get press-to-audible latency (see audio.py).
-    # It is taken here rather than in button_handler, so it excludes the GPIO poll
-    # interval; that part is bounded by config.POLL_INTERVAL and reported separately.
+    # Press timestamp, used for phone/audio latency calcs (see audio.py).
     press_ms = time.monotonic() * 1000.0
     app_state['db_change_at_ms'] = press_ms
 

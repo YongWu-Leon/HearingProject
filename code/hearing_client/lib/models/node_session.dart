@@ -2,24 +2,17 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 
 import '../services/test_assembler.dart';
 
-/// Nodes the operator expects to exist. A card is shown for each of these from
-/// the moment the app starts, greyed out until it registers, so a board that is
-/// powered down or not yet deployed is visibly absent rather than silently
-/// missing from the list.
-///
-/// This is only a display roster. A node that registers with an id not on this
-/// list still gets a card automatically, so adding a fourth board needs no code
-/// change -- listing it here just means it shows as offline beforehand.
+/// Nodes the operator expects to exist. Each gets a card from app start,
+/// greyed out until it registers. Display roster only -- a node not listed
+/// here still gets a card automatically when it registers.
 const kExpectedNodes = ['node01', 'node02', 'node03'];
 
 /// A node that has not sent a heartbeat for this long counts as offline. Nodes
 /// beat every 5 s, so this tolerates two missed beats before raising the alarm.
 const kHeartbeatTimeout = Duration(seconds: 15);
 
-/// How long the app waits for tone_done before re-enabling Play on its own.
-/// The app deliberately runs no countdown of its own -- the node owns the clock,
-/// because every X/Y press restarts it. This is only a safety net for a node that
-/// dies mid-tone, and it matches the node's own MAX_TONE_TOTAL_SEC ceiling.
+/// Fallback timeout to re-enable Play if tone_done never arrives (the node
+/// owns the tone clock, not the app). Matches the node's MAX_TONE_TOTAL_SEC.
 const kPlayTimeout = Duration(seconds: 120);
 
 /// How a level was arrived at. Drives the row colour in the records view:
@@ -60,11 +53,8 @@ String stepFromLabel(StepFrom f) {
 }
 
 /// One level the subject held during a test = one row in the records view.
-///
-/// [remainingS] is how much of the 15 s countdown was still on the clock when
-/// this level ended, i.e. how long it had been held before they changed it. The
-/// last step of a test always ends at 0 -- the countdown ran out, which is what
-/// makes its level the threshold.
+/// [remainingS] is the countdown left when this level ended; the last step
+/// always ends at 0, making its level the threshold.
 class TestStep {
   final int index;
   final double db;
@@ -108,10 +98,8 @@ class TestRecord {
   final int? id;
   final String nodeId;
 
-  /// Groups the tests taken on one node into one patient/session. Every test
-  /// between two "new patient" marks shares this value (the mark's timestamp),
-  /// so the audiogram draws one chart per patient instead of mixing them. 0 for
-  /// legacy rows saved before grouping existed.
+  /// Groups tests into one patient/session (shared timestamp between "new
+  /// patient" marks). 0 for legacy rows predating grouping.
   final int patientId;
 
   final int seq;
@@ -125,11 +113,9 @@ class TestRecord {
   final String? reason;
   final double? thresholdDb;
 
-  /// Loudest ambient level measured while this test ran, and whether it went
-  /// over the configured limit. Recorded rather than enforced: a portable
-  /// screener has no sound booth, so the honest thing is to say how quiet the
-  /// room actually was and let the analysis decide what to do about it.
-  /// Null on rows saved before ambient monitoring existed.
+  /// Loudest ambient level during this test, and whether it exceeded the
+  /// configured limit. Recorded, not enforced. Null on rows predating
+  /// ambient monitoring.
   final double? ambientPeakDb;
   final bool ambientOverLimit;
 
@@ -225,11 +211,9 @@ class LiveEvent {
   LiveEvent(this.nodeId, this.seq, this.text, this.kind) : ts = DateTime.now();
 }
 
-/// Everything the app knows about one node: its link state, the parameters the
-/// operator has dialled in for it, and what it is doing right now.
-///
-/// Each node carries its OWN frequency / volume / ear, which is what lets three
-/// nodes run different tones at the same time.
+/// Everything the app knows about one node: link state, operator-set
+/// parameters, and current activity. Each node has its own frequency/volume/
+/// ear, so nodes run independently.
 class NodeSession {
   final String nodeId;
   WebSocketChannel? channel;
@@ -241,18 +225,16 @@ class NodeSession {
   String state = 'IDLE'; // IDLE | PLAYING
   DateTime lastSeen = DateTime.now();
 
-  /// False for a roster entry that has never connected. Distinguishes "not
-  /// deployed yet" from "was here and dropped", which read very differently to
-  /// whoever is running the test.
+  /// False for a roster entry that has never connected (vs. connected then
+  /// dropped).
   bool everRegistered = false;
 
   double remainingS = 0;
 
   // --- operator-set parameters, per node ---
 
-  /// Marks the start of the current patient/session on this node. Every completed
-  /// test stamps this value, so the audiogram can group tests by patient. Set
-  /// once when the session starts and advanced only by "New patient".
+  /// Start of the current patient/session; stamped onto completed tests for
+  /// audiogram grouping. Advanced only by "New patient".
   int patientGroupTs = DateTime.now().millisecondsSinceEpoch;
 
   void startNewPatient() =>
@@ -261,11 +243,9 @@ class NodeSession {
   double frequency = 1000;
   int freqSliderIndex = 4;
 
-  /// The playback level in dB -- one merged value. When idle it is the operator's
-  /// set point (the slider / text box control it, and it is what Play sends). When
-  /// a tone is playing, node messages update it on every X/Y press, so the same
-  /// control tracks the subject live -- which is why there is no separate
-  /// "subject level" readout any more. After a tone ends it holds the threshold.
+  /// Playback level in dB. Idle: operator's set point (sent by Play). Playing:
+  /// updated live from the node on each X/Y press. After a tone ends: holds
+  /// the threshold.
   double levelDb = -10.0;
 
   String ear = 'both';
@@ -274,9 +254,8 @@ class NodeSession {
   bool expanded = false;
   bool selected = true;
 
-  /// True from the moment play_tone is sent until tone_done arrives (or the
-  /// timeout fires). The Play button is disabled while it is set -- the app does
-  /// not run its own countdown, it waits to be told.
+  /// True from play_tone until tone_done arrives or the timeout fires; Play
+  /// stays disabled meanwhile.
   bool awaitingResult = false;
   bool timedOut = false;
   int? activeSeq;
@@ -285,15 +264,14 @@ class NodeSession {
   /// Builds the test record from this node's message stream. See TestAssembler.
   final TestAssembler assembler = TestAssembler();
 
-  /// Last value [online] reported, so the 1 Hz housekeeping tick can repaint on
-  /// the transition instead of repainting unconditionally every second.
+  /// Last value [online] reported, so the housekeeping tick repaints only on
+  /// transitions.
   bool lastKnownOnline = false;
 
   NodeSession(this.nodeId);
 
-  /// Connected AND still sending heartbeats. Both halves matter: a phone that
-  /// walks out of range leaves a half-open socket that looks alive until the
-  /// heartbeats stop arriving.
+  /// Connected AND still sending heartbeats -- a socket can look alive after
+  /// the phone walks out of range until heartbeats stop.
   bool get online => channel != null && !staleFor(kHeartbeatTimeout);
   bool get isPlaying => state == 'PLAYING';
 

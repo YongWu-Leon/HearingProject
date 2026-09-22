@@ -2,19 +2,10 @@
 # mock_node.py
 """Simulated node for a bare Pi (no Pirate Audio, no sound card, no GPIO).
 
-Reuses the ENTIRE network layer from node_client -- registration, heartbeat,
-command dispatch, uplink queue, exponential-backoff reconnect. Only the audio
-backend is faked. That is the whole point of keeping the network layer free of
-audio and GPIO imports: this file proves the split holds.
-
-What it fakes:
-  - play_tone -> emits tone_started, then simulates a subject hunting for their
-    threshold: a few random X/Y presses 300-800 ms apart, each one emitting
-    volume_changed and restarting the countdown, exactly as real buttons do.
-  - the tone then ends when the countdown expires, emitting tone_done.
-
-Use it to exercise registration, heartbeats, disconnect/reconnect, several nodes
-at once and seq correlation without tying up a real test rig.
+Reuses node_client's entire network layer (registration, heartbeat, command
+dispatch, uplink queue, reconnect); only the audio backend is faked. play_tone
+emits tone_started, simulates a few random X/Y presses ~300-800ms apart (each
+emitting volume_changed), then tone_done when the countdown expires.
 
 Run: python3 mock_node.py
 Override the id so it does not collide with a real node:
@@ -32,8 +23,7 @@ import records
 import tone_clock
 import uplink
 
-# How many simulated response presses before the subject settles. Real subjects
-# converge in a handful of presses; the range keeps sessions varied.
+# Simulated response presses before the subject "settles".
 PRESSES_MIN = 2
 PRESSES_MAX = 5
 PRESS_GAP_MIN_S = 0.3
@@ -64,7 +54,7 @@ class MockPlayer:
         if self._thread is not None and self._thread.is_alive():
             self._thread.join(timeout=timeout)
 
-    # ---------- the fake "playback" ----------
+    # Fake playback
 
     def _run(self, frequency, ear, seq):
         st = self._app_state
@@ -96,8 +86,7 @@ class MockPlayer:
                 break
 
             if presses_left > 0 and now >= next_press_at:
-                # Bias towards X (quieter), which is what hunting for a threshold
-                # from an audible starting level actually looks like.
+                # Bias towards X (quieter) to mimic real threshold-hunting.
                 self._fake_press("X" if random.random() < 0.6 else "Y")
                 presses_left -= 1
                 next_press_at = time.monotonic() + random.uniform(
@@ -122,9 +111,8 @@ class MockPlayer:
               f"threshold={st['current_db']:.1f}dB")
 
     def _fake_press(self, source):
-        """Same effect as a real X/Y press. adjustments is not imported here on
-        purpose -- it is exercised on real hardware; duplicating the few lines
-        keeps the mock runnable on a board with nothing installed but websockets."""
+        """Same effect as a real X/Y press; duplicated here (not imported from
+        adjustments) so the mock needs only websockets."""
         st = self._app_state
         delta = config.DB_STEP_UP if source == "Y" else -config.DB_STEP_DOWN
 

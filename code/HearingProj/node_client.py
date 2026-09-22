@@ -1,26 +1,19 @@
 #!/usr/bin/env python3
 # node_client.py
-"""Node process: a WebSocket client that reports to the phone.
+"""Node process: a WebSocket client that reports to the phone. Nodes never
+talk to each other.
 
-This replaces the Flask app. The direction of the link is inverted from the old
-design: the phone used to connect to a board's HTTP server, and now the phone runs
-the server and every node dials it. Nodes never talk to each other.
+Lifecycle: read the default gateway (never hardcoded) -> connect
+ws://<gateway>:8765/ws -> register -> heartbeat every HEARTBEAT_INTERVAL_S ->
+dispatch downlink commands (play_tone/stop/ping) -> ship uplink events
+(tone_started/volume_changed/tone_done/error).
 
-Lifecycle:
-  1. read the default gateway (= the phone, on its own hotspot) -- never hardcoded
-  2. connect ws://<gateway>:8765/ws
-  3. send register
-  4. send heartbeat every HEARTBEAT_INTERVAL_S
-  5. dispatch downlink commands (play_tone / stop / ping) to the audio layer
-  6. ship uplink events (tone_started / volume_changed / tone_done / error)
+On disconnect, playback is aborted and the uplink queue dropped, so a lost
+link never leaves an orphaned tone playing at an unknown level. Reconnect
+uses backoff with jitter (avoids nodes retrying in lockstep).
 
-On disconnect: playback is aborted immediately and the pending uplink queue is
-dropped, so a lost link can never leave an orphaned tone playing at an unknown
-level. Reconnect uses exponential backoff with jitter (jitter matters: without it
-three nodes that lost the same hotspot would retry in lockstep forever).
-
-The network layer here is deliberately free of any audio or GPIO import -- that is
-what lets mock_node.py reuse all of it with a fake audio backend on a bare board.
+No audio/GPIO imports here, so mock_node.py can reuse this layer with a fake
+audio backend.
 
 Run: python3 node_client.py
 """
@@ -44,12 +37,8 @@ import uplink
 
 
 def new_app_state():
-    """The single source of truth for playback state.
-
-    Every module reads this by reference; only the playback control path writes
-    is_playing. No module keeps its own copy -- an independent flag is what once
-    produced phantom entries.
-    """
+    """Single source of truth for playback state; every module reads this by
+    reference, and only the playback control path writes is_playing."""
     return {
         'is_playing': False,
         'current_db': config.DEFAULT_DB,
@@ -70,7 +59,7 @@ class NodeClient:
         self.player = player
         self._fail_streak = 0
 
-    # ---------- connection loop ----------
+    # Connection loop
 
     async def run(self):
         attempt = 0
@@ -135,7 +124,7 @@ class NodeClient:
                 t.cancel()
             await asyncio.gather(*tasks, return_exceptions=True)
 
-    # ---------- pumps ----------
+    # Pumps
 
     async def _recv_loop(self, ws):
         loop = asyncio.get_event_loop()
@@ -159,28 +148,20 @@ class NodeClient:
                 await loop.run_in_executor(
                     None, controls.handle_stop, self.app_state, self.player, msg)
             elif mtype == "ping":
-                # Clock-offset probe. The phone cannot compare its own timestamps
-                # with this node's directly -- the two clocks are unrelated -- so it
-                # sends its own stamp and we echo it back beside ours. From t_app
-                # (sent), t_node (here) and the arrival time, the phone solves for
-                # the offset and can then convert any node stamp into its own clock.
-                # Heartbeat is still queued so an older phone that used ping purely
-                # as a liveness poke keeps working.
+                # Clock-offset probe: echo t_app back with our own timestamp so
+                # the phone can compute the offset. Heartbeat still queued for
+                # older phones that used ping only as a liveness check.
                 uplink.send("pong",
                             t_app_ms=msg.get("t_app_ms"),
                             t_node_ms=round(time.monotonic() * 1000.0, 3))
                 self._queue_heartbeat()
             else:
-                # An unknown type must be ignored, not fatal: the phone may be a
-                # newer build than this node.
+                # Unknown type: ignore, don't fail (phone may be a newer build).
                 print(f"[ws] unknown message type {mtype!r}, ignored")
 
     async def _send_loop(self, ws):
-        """Drain the thread-side uplink queue into the socket.
-
-        uplink.get blocks, so it runs in an executor with a short timeout rather
-        than stalling the event loop.
-        """
+        """Drain the uplink queue into the socket via executor (uplink.get
+        blocks, so it can't run on the event loop directly)."""
         loop = asyncio.get_event_loop()
         while True:
             msg = await loop.run_in_executor(None, uplink.get, 0.25)
@@ -203,7 +184,7 @@ class NodeClient:
                     ear=st.get('current_ear', 'both'),
                     remaining_s=round(tone_clock.remaining(st), 2) if playing else 0.0)
 
-    # ---------- disconnect handling ----------
+    # Disconnect handling
 
     def _abort_playback(self):
         if self.app_state.get('is_playing'):
@@ -216,9 +197,8 @@ class NodeClient:
     def _note_failure(self):
         self._fail_streak += 1
         if self._fail_streak == config.RECONNECT_NET_RETRY_AFTER:
-            # Repairing a dropped WiFi association needs root (nmcli), which this
-            # process does not have. The power_button service runs as root and its
-            # watchdog rejoins the hotspot; all this process can do is say so.
+            # Repairing a dropped WiFi association needs root; power_button's
+            # watchdog handles that. This process can only report it.
             print(f"[ws] {self._fail_streak} failed attempts -- the WiFi link to "
                   f"the phone is probably down. Waiting for the power_button "
                   f"watchdog to rejoin '{config.HOTSPOT_PROFILE}'.")
@@ -232,8 +212,8 @@ class NodeClient:
 
 
 def main():
-    # Hardware modules are imported here, not at module scope, so that mock_node.py
-    # can import this file on a board with no sound card and no GPIO access.
+    # Imported here, not at module scope, so mock_node.py can import this
+    # file on a board with no sound card and no GPIO access.
     import audio
     import button_handler
 

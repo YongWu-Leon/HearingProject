@@ -146,6 +146,12 @@ tests cover the trickiest message-reassembly logic).
 
 ---
 
+## Development notes
+
+All core engineering decisions and system design in this project, including the star topology architecture, the node-side countdown logic, the hearing threshold detection approach, and the hardware integration, are my own work. I used Claude Code to assist with code comments, documentation, and repository organization.
+
+---
+
 ## License
 
 Released under the [MIT License](LICENSE) © 2026 Leon Wu.

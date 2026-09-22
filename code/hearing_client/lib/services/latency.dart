@@ -2,18 +2,16 @@ import 'dart:math' as math;
 
 /// Which link timing a sample describes.
 enum LatencyKind {
-  /// Phone sends play_tone -> node's tone_started comes back. Measured entirely
-  /// on the phone's clock, so it needs no clock agreement and is the most
-  /// trustworthy figure. It is also what the operator actually feels: the delay
-  /// between pressing Play and the tone existing.
+  /// play_tone -> tone_started. Phone clock only, most trustworthy figure;
+  /// what the operator feels as Play-to-tone delay.
   commandRoundTrip,
 
-  /// Subject's X/Y press -> the phone has the event. One-way, so it only exists
-  /// once the node's clock has been related to the phone's (see [ClockOffset]).
+  /// Subject's X/Y press -> phone receives it. One-way; needs the node's clock
+  /// offset established first (see [ClockOffset]).
   buttonOneWay,
 
-  /// The node's own measurement: press -> first audio chunk built at the new
-  /// level. Node-local, so no clock agreement is involved.
+  /// Node-local: press -> first audio chunk at the new level. No clock
+  /// agreement needed.
   audioApply,
 }
 
@@ -41,17 +39,10 @@ extension LatencyKindLabel on LatencyKind {
   }
 }
 
-/// Relates one node's monotonic clock to the phone's.
-///
-/// The two clocks share no epoch, so a node timestamp is meaningless on the
-/// phone until the difference between them is known. A ping/pong exchange gives
-/// it: the phone sends its own stamp, the node echoes that back beside its own,
-/// and assuming the two legs of the round trip are roughly symmetric the node's
-/// stamp corresponds to the midpoint of the exchange. Each new exchange refines
-/// the estimate, and the one with the SHORTEST round trip is kept -- a fast
-/// exchange had least room for asymmetry, so it carries the least error. (This
-/// "keep the best round trip" rule is the same reason NTP prefers low-delay
-/// samples.)
+/// Relates one node's monotonic clock to the phone's, via ping/pong: phone
+/// sends its stamp, node echoes it back with its own; assuming symmetric
+/// round-trip legs, the node's stamp maps to the exchange midpoint. Keeps the
+/// offset from the shortest round trip seen (least room for asymmetry/error).
 class ClockOffset {
   double? _offsetMs;
   double _bestRttMs = double.infinity;

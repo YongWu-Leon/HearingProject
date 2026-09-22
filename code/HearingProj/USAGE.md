@@ -1,7 +1,7 @@
 # USAGE.md -- Portable Hearing Tester (star topology, phone = hub)
 
 > All nodes run the SAME code. Nothing is edited per Pi: the node id comes from
-> the deploy path. See `docs/DECISIONS.md` D-009 for why the architecture changed.
+> the deploy path.
 
 ---
 

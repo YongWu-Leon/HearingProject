@@ -9,17 +9,12 @@ import 'audiogram_screen.dart';
 /// Saved test records, read from the phone's database.
 ///
 /// One test = one thick-bordered group. Inside it, one row per level the subject
-/// held, colour coded by how they got there:
-///   white        the level the operator started them on
-///   light red    they pressed X to go quieter
-///   light green  they pressed Y to go louder
-/// The right-hand column is how much of the 15 s countdown was left when that
-/// level ended -- i.e. how long they sat on it before changing it. The last row
-/// always ends at 0.0 s, because that is the countdown running out, and its
-/// level is the threshold shown in the footer.
+/// held, colour coded by how they got there (white = operator start, red = X
+/// pressed, green = Y pressed). Right column is countdown remaining when that
+/// level ended; the last row always ends at 0.0 s and its level is the
+/// threshold shown in the footer.
 ///
-/// Levels here are in dB. The 0-100 volume control on the main screen is only a
-/// send-side convenience; it never appears in the record.
+/// Levels here are in dB; the main screen's 0-100 control is send-side only.
 class RecordsScreen extends StatefulWidget {
   /// null shows every node.
   final String? nodeId;
@@ -177,19 +172,14 @@ class _RecordsScreenState extends State<RecordsScreen> {
     );
   }
 
-  // ---------- one test = one bordered group ----------
-
   Widget _testGroup(TestRecord t) {
-    // Border colour is the node's signature colour, so in the combined "all
-    // records" view you can tell at a glance which node each test came from --
-    // and it matches that node's card on the main screen.
+    // Border colour = node's signature colour, matches its card on the main screen.
     final border = AppTheme.nodeColor(t.nodeId);
     final onNode = AppTheme.onNodeColor(t.nodeId);
     return Container(
       margin: const EdgeInsets.only(bottom: 14),
       decoration: BoxDecoration(
         color: Colors.white,
-        // The thick border is what visually separates one test from the next.
         border: Border.all(color: border, width: 2.5),
         borderRadius: BorderRadius.circular(10),
       ),
@@ -295,10 +285,8 @@ class _RecordsScreenState extends State<RecordsScreen> {
   }
 
   Widget _groupFooter(TestRecord t, Color nodeColor, Color onNode) {
-    // Only completed tests are ever stored now, so the footer always shows a
-    // threshold; the incomplete branch stays as defensive fallback.
+    // Incomplete branch is a defensive fallback; only completed tests are stored.
     final complete = t.isComplete && t.thresholdDb != null;
-    // Dark text on the soft node colour; white on the grey fallback.
     final fg = complete ? onNode : Colors.white;
     return Container(
       color: complete ? nodeColor : const Color(0xFF78909C),
@@ -325,8 +313,7 @@ class _RecordsScreenState extends State<RecordsScreen> {
               ),
             ],
           ),
-          // Flagged, never withheld: the result stands, and a reader can see that
-          // the room was louder than the limit while it was being measured.
+          // Flagged, never withheld -- result stands regardless.
           if (t.ambientOverLimit) ...[
             const SizedBox(height: 4),
             Row(

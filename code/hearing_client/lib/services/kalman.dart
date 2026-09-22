@@ -1,18 +1,12 @@
-/// A minimal scalar (1-D) Kalman filter.
+/// A minimal scalar (1-D) Kalman filter, estimating a single slowly-varying
+/// quantity (here: ambient noise in dB) from noisy measurements.
 ///
-/// It estimates a single, slowly-varying quantity -- here the ambient noise
-/// level in dB -- from a stream of noisy measurements. Every step blends the
-/// previous estimate (the prediction) with the new measurement, weighting each
-/// by its uncertainty, so the output is far steadier than the raw microphone
-/// readings but without the lag of a long moving average.
+/// Random-walk model: true value drifts between samples (process-noise [q]);
+/// each measurement carries noise (measurement-noise [r]).
+///   - larger [q] -> trust new readings more (faster, jumpier)
+///   - larger [r] -> trust the estimate more (smoother, slower)
 ///
-/// Model: a random walk. The true value is assumed to drift a little between
-/// samples (process-noise variance [q]); every measurement carries noise
-/// (measurement-noise variance [r]).
-///   - larger [q]  -> trust new readings more   (faster to react, jumpier)
-///   - larger [r]  -> trust the estimate more   (smoother, slower to react)
-///
-/// The two-line predict/update core is the standard 1-D Kalman recursion:
+/// Standard 1-D Kalman recursion:
 ///   predict:  P += Q
 ///   update :  K = P / (P + R);  x += K*(z - x);  P *= (1 - K)
 class KalmanFilter {
@@ -37,8 +31,7 @@ class KalmanFilter {
   /// Feed one measurement and return the updated estimate.
   double update(double measurement) {
     if (!_seeded) {
-      // Seed on the first reading so the estimate starts at the signal instead
-      // of crawling up from zero.
+      // Seed on first reading so the estimate starts at the signal, not zero.
       _x = measurement;
       _p = r;
       _seeded = true;

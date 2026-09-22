@@ -6,14 +6,11 @@ import '../models/node_session.dart';
 import '../services/db.dart';
 import '../theme.dart';
 
-/// Audiogram view. One chart PER PATIENT: the tests taken on a node between two
-/// "New patient" marks form one patient group, and each group is drawn as its
-/// own audiogram, so different subjects are never mixed onto one chart.
+/// Audiogram view. One chart per patient: tests taken on a node between two
+/// "New patient" marks form a group, drawn as its own chart.
 ///
-/// Layout follows the clinical convention -- log frequency across the bottom,
-/// quieter (better) hearing towards the top, right ear = red circles, left ear =
-/// blue crosses. The vertical axis is uncalibrated device dB, not dB HL, and is
-/// labelled as such; a per-frequency calibration offset turns it into dB HL.
+/// Log frequency axis; right ear = red circles, left ear = blue crosses.
+/// Vertical axis is uncalibrated device dB, not dB HL.
 class AudiogramScreen extends StatefulWidget {
   /// null shows every node's groups together.
   final String? nodeId;
@@ -45,8 +42,7 @@ class _AudiogramScreenState extends State<AudiogramScreen> {
   }
 
   /// Completed tests grouped by (node, patient), newest group first. Within a
-  /// group the newest threshold for each frequency wins (loadTests is newest
-  /// first, so the first value seen is kept).
+  /// group, the newest threshold per frequency wins.
   List<_PatientGroup> _groups() {
     final byKey = <String, _PatientGroup>{};
     final order = <String>[];
@@ -69,8 +65,7 @@ class _AudiogramScreenState extends State<AudiogramScreen> {
           .putIfAbsent(t.freqHz, () => t.thresholdDb!);
     }
     final list = [for (final k in order) byKey[k]!];
-    // order is newest-first (tests are newest first), so the earliest group is
-    // last -- number it Patient 1 and the newest the highest.
+    // Number the oldest group as Patient 1 (list order is newest-first).
     for (var i = 0; i < list.length; i++) {
       list[i].patientNo = list.length - i;
     }
@@ -279,17 +274,15 @@ class _AudiogramPainter extends CustomPainter {
 
   _AudiogramPainter(this.series);
 
-  // Frequency axis (log). It spans the full ladder the app can dial in, not just
-  // the clinical octaves -- a threshold measured at 10 kHz has to land on the
-  // chart rather than being clamped onto the right-hand edge.
+  // Frequency axis (log); spans the app's full dial-in ladder, not just the
+  // clinical octaves.
   static const _fMin = 125.0;
   static const _fMax = 10000.0;
   static const _labelFreqs = <double>[
     125, 250, 500, 1000, 2000, 4000, 8000, 10000
   ];
 
-  // Level axis (device dB): quieter/better at the top, louder/worse at the bottom
-  // -- the same orientation a clinical audiogram uses for dB HL.
+  // Level axis (device dB): quieter/better at top, matching clinical dB HL orientation.
   static const _dbTop = -120.0;
   static const _dbBottom = 0.0;
   static const _dbGrid = <double>[-120, -100, -80, -60, -40, -20, 0];
@@ -363,17 +356,14 @@ class _AudiogramPainter extends CustomPainter {
       if (prev != null) canvas.drawLine(prev, pt, line);
       prev = pt;
     }
-    // Markers and value labels go on after the whole line, so the line never
-    // crosses over a marker or its text.
+    // Draw markers/labels after the line so it never crosses over them.
     for (final f in freqs) {
       final raw = data[f]!;
       final db = raw.clamp(_dbTop, _dbBottom);
       final pt = Offset(xFor(f), yFor(db));
       _marker(canvas, pt, color, marker);
 
-      // The level in dB, printed by the point so it can be read off the chart
-      // instead of estimated against the axis. It sits below the marker, and
-      // flips above when the point is too close to the bottom edge to fit.
+      // Value label below the marker; flips above near the bottom edge.
       final t = _valueLabel(raw.round().toString(), color);
       final below = pt.dy + 9 + t.height <= plot.bottom;
       final dx = (pt.dx - t.width / 2)
@@ -397,8 +387,7 @@ class _AudiogramPainter extends CustomPainter {
         c.drawLine(o.translate(-r, r), o.translate(r, -r), stroke);
         break;
       case _Marker.dot:
-        // An outlined ring on a white centre, not a solid blob: the exact level
-        // is read off the ring's centre, which a filled dot hides.
+        // Outlined ring, not a solid dot, so the centre marks the exact level.
         c.drawCircle(o, r - 1, Paint()..color = Colors.white);
         c.drawCircle(o, r - 1, stroke);
         break;

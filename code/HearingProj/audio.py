@@ -1,20 +1,14 @@
 # audio.py
-"""Pure-tone generation and playback (moved out of the old Flask app.py).
+"""Pure-tone generation and playback.
 
-The generation core is unchanged from the Flask version: tones are built ONE CHUNK
-AT A TIME from an absolute sample index, so phase stays continuous across chunk
-boundaries. Never go back to pre-generating a whole buffer -- that is what caused
-clicks at the boundaries.
+Tones are built one chunk at a time from an absolute sample index, so phase
+stays continuous across chunk boundaries. Playback runs until
+app_state['tone_deadline'] passes; every X/Y press pushes that deadline out
+by TONE_DURATION (see button_handler), so the tone ends 15 s after the
+subject stops adjusting.
 
-What DID change is when playback stops. It used to run a fixed 15 s of samples.
-Now 15 s is a COUNTDOWN: the loop runs until app_state['tone_deadline'] passes,
-and every X/Y press pushes that deadline back out to now + TONE_DURATION (see
-button_handler). So the subject can take as long as they need to hunt for their
-quietest audible level, and the tone ends 15 s after they stop adjusting. Whatever
-level they settled on is the threshold result reported to the phone.
-
-app_state (owned by node_client) is the single source of truth for playback state.
-Only this module's play_tone and the stop path write is_playing.
+app_state (owned by node_client) is the single source of truth for playback
+state; only this module's play_tone and the stop path write is_playing.
 """
 import threading
 import time
@@ -44,9 +38,7 @@ def get_output_device_index():
                 if first_index is None:
                     first_index = i
                 name = info['name'].lower()
-                # Keep the FIRST match and never match HDMI. (HDMI's name contains
-                # 'i2s-hifi', which a looser 'hifi' keyword wrongly caught, sending
-                # audio to HDMI -> stream failed to open -> no sound.)
+                # First match wins; HDMI is excluded (its name also matches 'hifi').
                 if (dac_index is None
                         and not any(k in name for k in config.AUDIO_DEV_EXCLUDE)
                         and any(k in name for k in config.AUDIO_DEV_KEYWORDS)):
@@ -74,10 +66,8 @@ OUTPUT_DEVICE_INDEX = get_output_device_index()
 def _ramp_gains(start, n, fs, now, deadline):
     """Fade-in / fade-out envelope for one chunk, or None when RAMP_MS is 0.
 
-    Disabled by default (config.RAMP_MS = 0), which reproduces the previous
-    behaviour byte for byte. Set RAMP_MS to 10 if hardware listening reveals a
-    click at the stream edges. The fade-out is chunk-granular: it triggers on the
-    chunk where the countdown is about to expire.
+    Fade-out is chunk-granular: it triggers on the chunk where the countdown
+    is about to expire.
     """
     if config.RAMP_MS <= 0:
         return None
@@ -107,8 +97,7 @@ def play_tone(app_state, frequency, ear='both', seq=None):
     app_state['current_frequency'] = frequency
     app_state['current_ear'] = ear
     app_state['seq'] = seq
-    # The first segment of a test is the level the phone sent -- 'init' in the
-    # phone's records table (white row); X/Y presses open the later segments.
+    # First segment = phone-sent starting level ('init'); X/Y presses open later ones.
     app_state['seg_db'] = app_state['current_db']
     app_state['seg_from'] = 'init'
 
@@ -137,8 +126,7 @@ def play_tone(app_state, frequency, ear='both', seq=None):
                     db=round(app_state['current_db'], 2), ear=ear)
 
         start = 0
-        # Tracks which level the previous chunk was built with, so the first chunk
-        # that carries a NEW level can be timestamped (see the latency block below).
+        # Level the previous chunk was built with, to detect the first chunk at a new level.
         last_amp_db = app_state['current_db']
         while app_state['is_playing']:
             now = time.monotonic()
@@ -165,14 +153,8 @@ def play_tone(app_state, frequency, ear='both', seq=None):
             cur_db = app_state['current_db']
             stereo *= config.db_to_linear(cur_db)                     # real-time dB
 
-            # Press-to-audio latency: the time from the X/Y press (stamped in
-            # adjustments.apply_delta) to the first chunk BUILT with the new level.
-            # It is reported once per change rather than accumulated, so the phone
-            # gets one clean sample per press.
-            #
-            # NOTE what this does and does not cover: it ends when the chunk is
-            # handed to PyAudio, so it excludes the DAC's own output buffering. The
-            # dominant term is the chunk period (CHUNK_SIZE / SAMPLE_RATE).
+            # Press-to-audio latency: X/Y press timestamp to first chunk built at
+            # the new level. Excludes DAC output buffering.
             if cur_db != last_amp_db:
                 pressed_at = app_state.pop('db_change_at_ms', None)
                 if pressed_at is not None:
@@ -199,8 +181,7 @@ def play_tone(app_state, frequency, ear='both', seq=None):
             p.terminate()
         app_state['is_playing'] = False
 
-        # The final segment closes here. Its dB is the subject's threshold for this
-        # frequency: they stopped adjusting and the countdown ran out.
+        # Final segment closes here; its dB is the subject's threshold for this frequency.
         left = 0.0 if completed else tone_clock.remaining(app_state)
         reason = "completed" if completed else "stopped"
         records.log_event(app_state, "end" if completed else "stop", remaining=left)
@@ -218,8 +199,7 @@ def play_tone(app_state, frequency, ear='both', seq=None):
 
 class Player:
     """Owns the playback thread. Switching tones joins the old thread before
-    starting the new one, so two audio streams never run at once -- a fixed sleep
-    is not reliable under load."""
+    starting the new one, so two audio streams never run at once."""
 
     def __init__(self, app_state, play_func=play_tone):
         self._app_state = app_state

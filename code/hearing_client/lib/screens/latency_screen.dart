@@ -9,17 +9,13 @@ import '../services/latency.dart';
 import '../services/ws_server.dart';
 import '../theme.dart';
 
-/// Link-timing measurements, for characterising the system rather than for
-/// screening anyone.
+/// Link-timing measurements, for characterising the system, not for screening.
 ///
-/// Three figures are shown, and they are deliberately not interchangeable:
-///   - command round-trip is measured entirely on the phone's clock, so it needs
-///     no clock agreement and is the figure to trust;
-///   - button one-way depends on the ping/pong clock offset, and is blank until
-///     that offset is established;
-///   - press-to-audio is measured by the node against its own clock.
-/// One part is invisible to software and so appears in none of them: finger
-/// contact until the GPIO poll notices it, bounded by the node's poll interval.
+/// Three figures, not interchangeable:
+///   - command round-trip: phone's clock only, the figure to trust;
+///   - button one-way: needs the ping/pong clock offset, blank until established;
+///   - press-to-audio: measured by the node against its own clock.
+/// Finger-contact-to-GPIO-poll time is not captured in any of them.
 class LatencyScreen extends StatefulWidget {
   final WsServer server;
 
@@ -219,8 +215,7 @@ class _LatencyScreenState extends State<LatencyScreen> {
             const Text('no samples',
                 style: TextStyle(color: Colors.white38, fontSize: 12))
           else
-            // Median and p95 are what characterise a link; mean, min and max add
-            // little on screen and are all in the CSV export anyway.
+            // Mean/min/max are in the CSV export.
             Text(
               'n=${s.count}    median ${s.medianMs.round()}    '
               'p95 ${s.p95Ms.round()} ms',

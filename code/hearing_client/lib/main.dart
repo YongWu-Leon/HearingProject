@@ -4,8 +4,7 @@ import 'screens/home_screen.dart';
 import 'theme.dart';
 
 void main() {
-  // The WebSocket server and the database both start from HomeScreen, once the
-  // binding is up -- see _HomeScreenState._boot.
+  // Server and DB start from HomeScreen once the binding is up (see _boot).
   WidgetsFlutterBinding.ensureInitialized();
   runApp(const HearingApp());
 }

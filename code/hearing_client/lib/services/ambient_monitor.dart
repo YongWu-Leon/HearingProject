@@ -7,14 +7,10 @@ import 'package:permission_handler/permission_handler.dart';
 import 'kalman.dart';
 
 /// Watches ambient noise through the phone's microphone and reports a smoothed
-/// level, so the operator is warned when the room is too loud for a valid
-/// screening.
+/// level, warning the operator when the room is too loud for a valid screening.
 ///
-/// A portable hearing test has no sound booth, so ambient noise is the biggest
-/// threat to the result's validity -- this is the same "check your environment"
-/// feature that clinical portable-audiometry apps provide. The raw dB stream
-/// from the microphone is jittery, so it is smoothed by a scalar [KalmanFilter]
-/// into a steady reading without the lag of a long moving average.
+/// Raw mic dB is jittery, so it's smoothed via a scalar [KalmanFilter] for a
+/// steady reading without the lag of a long moving average.
 class AmbientMonitor extends ChangeNotifier {
   /// Above this smoothed level the environment is flagged as too noisy. This is
   /// an uncalibrated device figure (not a dB SPL limit); tune it on real
@@ -42,12 +38,9 @@ class AmbientMonitor extends ChangeNotifier {
   /// True once at least one reading has been smoothed.
   bool get hasReading => _filter.hasEstimate;
 
-  // --- per-test window -----------------------------------------------------
-  // A single reading taken when a test ends says little: the room may have been
-  // quiet at that instant and loud throughout. So each test opens a window here
-  // and the loudest smoothed level inside it is what gets recorded with the
-  // result. Tests are never blocked -- the environment is reported, not policed,
-  // and whether to keep a noisy measurement is a decision for analysis.
+  // Per-test window: records the loudest smoothed level seen during a test,
+  // not just an instantaneous reading. Tests are never blocked on this --
+  // reported, not policed.
 
   double? _windowPeakDb;
   bool _windowExceeded = false;

@@ -1,24 +1,14 @@
 # net.py
 """Network layer: join the phone's hotspot, or switch to maintenance WiFi.
 
-This replaces the old SoftAP topology entirely. Nodes no longer run an access
-point, a uap0 virtual interface, hostapd or dnsmasq -- the phone provides the
-hotspot and every node is an ordinary WiFi client of it.
+Two modes, toggled by holding the A button (see power_button):
+  work  -> joined to the phone's hotspot (config.HOTSPOT_PROFILE); default at boot.
+  maint -> joined to config.MAINT_WIFI_PROFILE, for SSH.
 
-Two modes, toggled by holding the A button (unchanged behaviour, see power_button):
-  work  -> joined to the phone's hotspot (config.HOTSPOT_PROFILE). This is what
-           the node boots into and what testing runs on.
-  maint -> joined to the maintenance WiFi (config.MAINT_WIFI_PROFILE), for SSH.
-           This matters more than it used to: in work mode the node is on the
-           phone's hotspot, so without the phone present there is no other way in.
+NOTE: both are NetworkManager connection profile NAMES, not SSIDs (`nmcli con
+show` lists them); created once at deploy time, see USAGE.md.
 
-NOTE: HOTSPOT_PROFILE and MAINT_WIFI_PROFILE are NetworkManager connection profile
-NAMES, not SSIDs. The two are different identifiers -- `nmcli con show` lists the
-names. Both profiles are created once at deploy time (see USAGE.md); this module
-only brings them up and down.
-
-WARNING: every nmcli path here requires real-hardware verification -- none of it
-can be exercised on a development machine.
+WARNING: every nmcli path here requires real-hardware verification.
 """
 import socket
 import struct
@@ -43,15 +33,13 @@ def _con_active(name):
     return name in _run(["nmcli", "-t", "-f", "NAME", "con", "show", "--active"]).stdout.split("\n")
 
 
-# ---------- default gateway discovery ----------
+# Default gateway discovery
 
 def default_gateway():
-    """IP of the default gateway, i.e. the phone when joined to its hotspot.
+    """IP of the default gateway (the phone, when joined to its hotspot).
 
-    The phone's address is deliberately NOT hardcoded (it is not always
-    192.168.43.1 -- it varies by vendor and Android version). Reads /proc/net/route
-    directly, which needs no external process; falls back to parsing `ip route`.
-    Returns None when there is no default route, which means the WiFi link is down.
+    Not hardcoded -- varies by vendor/Android version. Reads /proc/net/route
+    directly, falls back to `ip route`. None means the WiFi link is down.
     """
     try:
         with open("/proc/net/route") as f:
@@ -89,7 +77,7 @@ def gateway_reachable(timeout=None):
     return r.returncode == 0
 
 
-# ---------- work mode: the phone's hotspot ----------
+# Work mode: the phone's hotspot
 
 def up_work():
     """Bring up the connection to the phone's hotspot."""
@@ -120,7 +108,7 @@ def ensure_work_mode():
     return ok
 
 
-# ---------- maintenance WiFi (A button) ----------
+# Maintenance WiFi (A button)
 
 def to_maintenance():
     """Switch to maintenance WiFi (for SSH)."""
@@ -141,7 +129,7 @@ def to_work():
     return ensure_work_mode()
 
 
-# ---------- watchdog helper ----------
+# Watchdog helper
 
 def reconnect_hotspot():
     """Rejoin the phone's hotspot after a drop. Rescans first, because the phone

@@ -1,15 +1,9 @@
 # controls.py
 """Playback command handlers (play / stop).
 
-These used to be Flask routes with a relay fan-out to peer boards. In the star
-topology there are no peers and no HTTP control plane: the phone addresses each
-node directly over its own WebSocket, so a command only ever means "do this here".
-The thread-switching logic is unchanged -- see audio.Player, which joins the old
-playback thread before starting a new one rather than sleeping a fixed interval.
-
-The phone still sends v as 0-100 linear (the volume slider keeps its old
-semantics); the conversion to dB happens here, at the entry point, exactly as the
-old /play endpoint did.
+The phone addresses each node directly over its own WebSocket; a command
+only ever means "do this here". The phone sends v as 0-100 linear; converted
+to dB at this entry point. See audio.Player for thread-switching.
 """
 import config
 import uplink
@@ -25,9 +19,6 @@ def handle_play(app_state, player, msg):
     f defaults to the current frequency, ear to both.
     """
     seq = msg.get('seq')
-    # Log the command as received. When a level fails to arrive the node falls
-    # back to its own default, which looks identical to the phone having asked
-    # for that default -- so the raw message is the only way to tell them apart.
     print(f"play_tone in: {msg}")
 
     try:
@@ -51,11 +42,7 @@ def handle_play(app_state, player, msg):
             uplink.send("error", code="BAD_VOLUME", detail=f"v={msg.get('v')!r}", seq=seq)
             return
     else:
-        # No level in the command at all. Falling back to whatever this node last
-        # used is the only safe thing to do, but it must never be silent: a node
-        # running older code once ignored a level field it did not recognise and
-        # quietly played every tone at its own default, which looked identical to
-        # the phone having asked for that default. Say so, and tell the phone.
+        # No level in the command: fall back to this node's current level, and report it.
         db = app_state['current_db']
         detail = (f"play_tone carried neither level_db nor v; "
                   f"fell back to this node's current level {db:.1f} dB")

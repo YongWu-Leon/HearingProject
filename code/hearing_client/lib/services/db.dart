@@ -6,13 +6,10 @@ import 'package:sqflite/sqflite.dart';
 
 import '../models/node_session.dart';
 
-/// Authoritative result storage.
+/// Authoritative result storage. Nodes keep a CSV as an offline backup only;
+/// this database is what the operator reads, exports and trusts.
 ///
-/// This is where test data actually lives. The nodes each keep a CSV as an
-/// offline backup, but that is a fallback for link outages only -- what the
-/// operator reads, exports and trusts is this database.
-///
-/// Two tables, which is exactly how the records view renders:
+/// Two tables, matching the records view:
 ///   tests  one row per tone = one thick-bordered group
 ///   steps  one row per level the subject held = one coloured line in that group
 class Db {
@@ -61,14 +58,12 @@ class Db {
         await db.execute('CREATE INDEX idx_tests_node ON tests (node_id, start_ts DESC)');
         await db.execute('CREATE INDEX idx_steps_test ON steps (test_id, idx)');
       },
-      // v2 adds patient grouping. Existing rows get a NULL patient_id, which the
-      // model reads as group 0 (legacy / ungrouped). ADD COLUMN is non-destructive.
+      // v2: patient grouping (NULL patient_id reads as group 0/legacy).
       onUpgrade: (db, oldV, _) async {
         if (oldV < 2) {
           await db.execute('ALTER TABLE tests ADD COLUMN patient_id INTEGER');
         }
-        // v3 records how loud the room was during each test. Existing rows get
-        // NULL, which reads back as "not measured" rather than as "it was quiet".
+        // v3: ambient noise per test (NULL = not measured, not "quiet").
         if (oldV < 3) {
           await db.execute('ALTER TABLE tests ADD COLUMN ambient_db REAL');
           await db.execute('ALTER TABLE tests ADD COLUMN ambient_over INTEGER');
@@ -171,8 +166,7 @@ class Db {
           'Change,Remaining_s,Reason,Threshold_dB,Ambient_dB,Ambient_over_limit');
     for (final t in tests) {
       final threshold = t.thresholdDb?.toStringAsFixed(1) ?? '';
-      // Ambient columns repeat on the group's last line only, beside the
-      // threshold they qualify, so one test still reads as one result.
+      // Ambient columns only appear on the group's last line, beside threshold.
       final ambient = t.ambientPeakDb?.toStringAsFixed(1) ?? '';
       final ambientOver = t.ambientPeakDb == null
           ? ''

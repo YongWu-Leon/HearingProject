@@ -2,19 +2,13 @@
 # dev_server.py
 """Development WebSocket server -- stands in for the phone app.
 
-Runs on a laptop so the nodes can be brought up and tested before the Flutter app
-exists, and so node-side problems can be diagnosed without a phone in the loop.
-It speaks exactly the same protocol as the app: same message types, same seq
-ownership (this server generates seq, the nodes echo it back).
-
-NOT part of the deployment. Nothing on a Pi imports this.
+Speaks the same protocol as the app (same message types; seq is owned here and
+echoed back by nodes). NOT part of the deployment -- nothing on a Pi imports this.
 
     pip install websockets
     python3 dev_server.py
 
-Then point the nodes at this machine. The nodes dial their default gateway, so
-either run this on the machine that is the gateway, or start a node with the
-gateway overridden for a quick test:
+Point a node at this machine with, if it's not the actual gateway:
 
     HEARING_WS_HOST=192.168.1.50 python3 node_client.py
 

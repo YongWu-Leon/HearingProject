@@ -1,29 +1,16 @@
 #!/usr/bin/env python3
 """Signal-purity verification for the node's tone generator.
 
-Runs entirely on a development machine -- no Pi, no DAC, no sound card. It
-imports the node's own config module and reproduces the exact chunk-by-chunk
-synthesis used in audio.play_tone, so what is measured is the code that ships,
-not a re-implementation of it.
+Runs entirely on a development machine -- no Pi, no DAC, no sound card.
+Reuses the node's own config module and reproduces the exact chunk-by-chunk
+synthesis used in audio.play_tone, so it measures the code that ships.
 
-WHY THIS EXISTS
-    An acoustic measurement of the finished system contains three error sources
-    stacked together: the generator (software), the DAC, and the transducer.
-    Establishing here that the DIGITAL signal is clean lets any deviation found
-    in the acoustic measurements be attributed to the hardware rather than to
-    the generator. That is the whole point -- error attribution.
+Establishing that the digital signal is clean lets any deviation found in
+acoustic measurements be attributed to hardware, not the generator.
 
-WHAT IT CHECKS
-    1. Frequency accuracy      -- does a nominal 1 kHz request produce 1 kHz?
-    2. Harmonic distortion     -- is the waveform a clean sine (THD)?
-    3. Phase continuity        -- does chunk-wise generation introduce boundary
-                                  artefacts? Compared against both a continuous
-                                  reference and a deliberately naive generator
-                                  that resets phase every chunk.
-    4. Level accuracy          -- does a requested dB produce that amplitude?
-    5. Floor behaviour         -- is DB_FLOOR a clamp rather than digital silence,
-                                  and is it representable at the output bit depth?
-    6. Clipping                -- does full scale stay within +/-1.0?
+Checks: frequency accuracy, harmonic distortion (THD), phase continuity across
+chunk boundaries (vs. a continuous reference and a naive phase-reset
+generator), level accuracy, floor behaviour (clamp vs. silence), clipping.
 
 USAGE
     python verify_signal.py                 # table to stdout + CSV + plots
@@ -38,8 +25,8 @@ import numpy as np
 
 import config
 
-# Standard audiometric frequencies. 10 kHz is omitted because its harmonics fall
-# above Nyquist, which makes the THD figure meaningless rather than merely small.
+# Standard audiometric frequencies; 10 kHz omitted -- its harmonics exceed
+# Nyquist, making THD meaningless there rather than merely small.
 TEST_FREQUENCIES = [125, 250, 500, 1000, 2000, 4000, 8000]
 
 # Levels used for the dB-scale check, spanning the full working range.
@@ -49,15 +36,15 @@ ANALYSIS_SECONDS = 4.0
 HARMONICS = (2, 3, 4, 5)
 
 
-# ---------------------------------------------------------------- generation
+# Generation
 
 def generate_chunked(frequency, db, seconds, reset_phase_each_chunk=False):
-    """Reproduce audio.play_tone's generation loop and return the left channel.
+    """Reproduce audio.play_tone's generation loop (left channel only).
 
-    The real loop builds one CHUNK_SIZE block at a time from an ABSOLUTE sample
-    index, which is what keeps phase continuous across block boundaries. Passing
-    reset_phase_each_chunk=True reproduces the naive alternative (restarting the
-    time vector at zero every block) purely so the two can be compared.
+    Builds one CHUNK_SIZE block at a time from an absolute sample index,
+    which keeps phase continuous. reset_phase_each_chunk=True reproduces
+    the naive alternative (time vector restarted at zero each block), for
+    comparison.
     """
     fs = config.SAMPLE_RATE
     chunk = config.CHUNK_SIZE
@@ -73,8 +60,8 @@ def generate_chunked(frequency, db, seconds, reset_phase_each_chunk=False):
         t = np.arange(base, base + n) / fs
         wave = np.sin(two_pi_f * t).astype(np.float32)
 
-        # audio.py writes interleaved stereo and scales the whole block by the
-        # current level; mono analysis only needs one channel back out.
+        # audio.py writes interleaved stereo scaled by level; mono analysis
+        # needs only one channel back out.
         stereo = np.zeros(n * 2, dtype=np.float32)
         stereo[0::2] = wave
         stereo[1::2] = wave
@@ -94,7 +81,7 @@ def generate_continuous(frequency, db, seconds):
     return (wave * config.db_to_linear(db)).astype(np.float32)
 
 
-# ------------------------------------------------------------------ analysis
+# Analysis
 
 def spectrum(signal):
     """Hann-windowed magnitude spectrum and its frequency axis."""
@@ -106,11 +93,8 @@ def spectrum(signal):
 
 
 def peak_frequency(freqs, mag):
-    """Peak frequency refined by parabolic interpolation on the log magnitude.
-
-    Without interpolation the answer is quantised to the FFT bin width, which
-    would hide errors smaller than the bin and report false ones up to half a bin.
-    """
+    """Peak frequency via parabolic interpolation on log magnitude (avoids
+    quantizing to the FFT bin width)."""
     k = int(np.argmax(mag))
     if k == 0 or k == len(mag) - 1:
         return freqs[k]
@@ -128,11 +112,8 @@ def _bin_peak(mag, freqs, target, span=4):
 
 
 def thd_percent(freqs, mag, fundamental):
-    """Total harmonic distortion from harmonics 2..5, as a percentage.
-
-    Harmonics landing above Nyquist are skipped rather than counted as zero,
-    which would understate the figure.
-    """
+    """THD (%) from harmonics 2..5; harmonics above Nyquist are skipped, not
+    counted as zero."""
     nyquist = config.SAMPLE_RATE / 2.0
     h1 = _bin_peak(mag, freqs, fundamental)
     if h1 <= 0:
@@ -147,12 +128,8 @@ def thd_percent(freqs, mag, fundamental):
 
 
 def spurious_ratio_db(freqs, mag, fundamental):
-    """Energy outside the fundamental, relative to total, in dB.
-
-    A phase-continuous sine puts essentially all of its energy in the fundamental
-    (plus window leakage); a generator that restarts phase every block smears
-    energy across the spectrum, which this figure exposes directly.
-    """
+    """Energy outside the fundamental, relative to total, in dB -- exposes the
+    spectral smearing a phase-reset generator would cause."""
     total = float(np.sum(mag ** 2))
     if total <= 0:
         return float('nan')
@@ -164,7 +141,7 @@ def spurious_ratio_db(freqs, mag, fundamental):
     return 10.0 * np.log10(outside / total)
 
 
-# --------------------------------------------------------------------- tests
+# Tests
 
 def test_frequencies():
     rows = []
@@ -241,7 +218,7 @@ def test_floor_and_clipping():
     }
 
 
-# -------------------------------------------------------------------- output
+# Output
 
 def _print_table(title, rows, columns):
     print()

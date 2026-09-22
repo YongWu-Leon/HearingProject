@@ -3,25 +3,18 @@
 """Power / network daemon (runs as root, independent of the node client).
 
   B button (GPIO6), hold 3-6s: shut down
-  A button (GPIO5), hold 3-6s: toggle between work mode (joined to the phone's
-                               hotspot) and maintenance WiFi
+  A button (GPIO5), hold 3-6s: toggle work mode (phone's hotspot) <-> maintenance
+                               WiFi (see net.py); without the phone on, maintenance
+                               WiFi is the only way to SSH in.
 
-Both buttons keep exactly the behaviour they always had. What changed underneath
-is only what "work mode" means: it used to raise this board's own SoftAP, and now
-it joins the phone's hotspot (see net.py). Holding A to reach the maintenance WiFi
-matters more than before -- in work mode the node is on the phone's hotspot, so
-without the phone powered on there is no other way to SSH in.
+Also runs a link watchdog thread: pings the default gateway every
+HEARTBEAT_INTERVAL seconds and, after HEARTBEAT_FAIL_THRESHOLD consecutive
+failures, rejoins the hotspot via nmcli -- a socket cannot repair a dropped
+WiFi association itself, which needs root.
 
-Also runs a link watchdog in a background thread: it pings the default gateway
-(the phone) every HEARTBEAT_INTERVAL seconds and, after HEARTBEAT_FAIL_THRESHOLD
-consecutive failures, rejoins the hotspot with nmcli. The WebSocket layer in
-node_client does its own exponential-backoff reconnect, but a socket cannot repair
-a dropped WiFi association -- that needs root, which is why it lives here.
-
-Reason for a separate service: even if the node client crashes, shutdown, network
-switching and the watchdog stay available, so the device never becomes
-unreachable. The two processes use different GPIO pins (A/B vs X/Y) and do not
-conflict.
+Runs as a separate service so shutdown, network switching, and the watchdog
+stay available even if the node client crashes. Uses different GPIO pins
+(A/B) than the node client (X/Y), so the two do not conflict.
 
 WARNING: network commands require real-hardware verification (see net.py).
 """
@@ -38,17 +31,12 @@ import net
 network_mode = "work"
 
 
-# ---------- A button: network switch ----------
+# A button: network switch
 
 def toggle_network():
     global network_mode
-    # If the work hotspot and the maintenance WiFi are the SAME network (a
-    # single-network setup: the phone hotspot is also where you SSH from), there
-    # is nothing to switch between. Toggling would drop and re-raise the same
-    # connection AND flip network_mode to "maint", which pauses the watchdog --
-    # so an accidental long-press would quietly stop the link from self-healing.
-    # Treat A as a safe no-op instead. Point MAINT_WIFI_PROFILE at a different
-    # network and A wakes back up on its own, no code change.
+    # If hotspot and maintenance WiFi are the same network, there's nothing to
+    # switch to, and toggling would pause the watchdog -- treat as a no-op.
     if config.HOTSPOT_PROFILE == config.MAINT_WIFI_PROFILE:
         print("[net] A held, but the work hotspot and maintenance WiFi are the "
               "same network -- nothing to switch to, ignoring.")
@@ -61,7 +49,7 @@ def toggle_network():
         network_mode = "work"
 
 
-# ---------- long-press detection ----------
+# Long-press detection
 
 def wait_for_long_press(pin):
     """Return True if the hold time is within [LONG_PRESS_SEC, LONG_PRESS_MAX_SEC].
@@ -81,16 +69,14 @@ def wait_for_long_press(pin):
     return (time.time() - press_start) > config.LONG_PRESS_SEC
 
 
-# ---------- link watchdog thread ----------
+# Link watchdog thread
 
 def _watchdog_loop():
     fails = 0
 
     while True:
-        # Only maintain the work-mode link WHILE in work mode. In maintenance
-        # (SSH) mode we must leave the radio completely alone -- otherwise the
-        # reconnect below would drag the node back onto the phone's hotspot and
-        # drop the SSH session (single radio).
+        # Only maintain the link in work mode -- reconnecting during
+        # maintenance (SSH) mode would drag the node back onto the hotspot.
         if network_mode != "work":
             fails = 0
             time.sleep(config.HEARTBEAT_INTERVAL)
@@ -123,7 +109,7 @@ def _do_reconnect():
     time.sleep(config.WATCHDOG_SLEEP)
 
 
-# ---------- main loop ----------
+# Main loop
 
 def main():
     GPIO.setwarnings(False)

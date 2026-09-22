@@ -13,15 +13,15 @@ import 'ambient_monitor.dart';
 import 'db.dart';
 import 'latency.dart';
 
-/// The phone is the hub. This runs the WebSocket server every node dials, owns
-/// the node registry, and turns the message stream into stored test records.
+/// The phone is the hub. Runs the WebSocket server every node dials, owns the
+/// node registry, and turns the message stream into stored test records.
 ///
-/// The phone does NOT open the hotspot -- the operator does that in Android
-/// settings. This just listens on whatever address the hotspot gives us.
+/// The phone does not open the hotspot -- the operator does that in Android
+/// settings; this just listens on whatever address it gets.
 ///
-/// seq is generated here and only here. Nodes echo it back on every message,
-/// which is what keeps three nodes' events from being confused with each other,
-/// and what keeps a node reboot from scrambling the association.
+/// seq is generated here and only here; nodes echo it back on every message,
+/// which is what keeps events from multiple nodes (or a rebooted node) from
+/// being confused with each other.
 class WsServer extends ChangeNotifier {
   static const int port = 8765;
 
@@ -33,18 +33,16 @@ class WsServer extends ChangeNotifier {
   final List<LiveEvent> events = [];
   static const _maxEvents = 60;
 
-  /// Link-timing instrument. Kept out of the results database on purpose: it
-  /// characterises the system, it is not part of anyone's screening result.
+  /// Link-timing instrument, kept out of the results database on purpose --
+  /// it characterises the system, not the screening result.
   final LatencyTracker latency = LatencyTracker();
 
-  /// Ambient-noise monitor, attached by the screen that owns it. Optional: with
-  /// no microphone permission there is simply nothing to record, and screening
-  /// carries on regardless.
+  /// Ambient-noise monitor, attached by the screen that owns it. Optional:
+  /// screening carries on without microphone permission.
   AmbientMonitor? ambient;
 
-  /// How often each node is probed for the clock offset that makes its
-  /// timestamps comparable with the phone's. Frequent enough to track drift,
-  /// rare enough to be invisible next to the 5 s heartbeat.
+  /// How often each node is probed for clock offset. Frequent enough to
+  /// track drift, rare enough to stay invisible next to the 5 s heartbeat.
   static const _clockProbeEvery = Duration(seconds: 10);
   DateTime _lastClockProbe = DateTime.fromMillisecondsSinceEpoch(0);
 
@@ -57,9 +55,8 @@ class WsServer extends ChangeNotifier {
   bool get running => _server != null;
 
   WsServer() {
-    // Seed the roster so every expected board has a card from the start, greyed
-    // out until it registers. Without this a board that is switched off simply
-    // does not appear, which looks the same as one that was never set up.
+    // Seed the roster so every expected board has a greyed-out card until it
+    // registers, instead of simply not appearing.
     for (final id in kExpectedNodes) {
       nodes[id] = NodeSession(id);
     }
@@ -69,10 +66,8 @@ class WsServer extends ChangeNotifier {
 
   Future<void> start() async {
     if (_server != null) return;
-    // seq must not repeat across app restarts, or a stored test could be matched
-    // to the wrong stimulus, so we resume above the highest seq on record. This
-    // is best-effort: a database problem must NEVER stop the socket from binding,
-    // or every node connection would be lost over a results-storage hiccup.
+    // Resume seq above the highest on record so it never repeats across
+    // restarts. Best-effort: a db problem here must not block the socket.
     try {
       final past = await Db.instance.loadTests(limit: 1);
       if (past.isNotEmpty) _seq = past.first.seq;
@@ -84,7 +79,7 @@ class WsServer extends ChangeNotifier {
         _onConnect(channel);
       });
 
-      // Nodes dial /ws; anything else on the hotspot is a stray probe.
+      // Nodes dial /ws; anything else is a stray probe.
       FutureOr<Response> root(Request req) {
         final path = req.url.path;
         if (path == 'ws' || path.isEmpty) return ws(req);
@@ -103,8 +98,8 @@ class WsServer extends ChangeNotifier {
     _safeNotify();
   }
 
-  /// Tear the listener down. Named shutdown, not stop, so it cannot be confused
-  /// with stop(node) below -- one ends the server, the other ends a tone.
+  /// Tear the listener down. Named shutdown (not stop) to avoid confusion with
+  /// stop(node) below, which ends a tone.
   Future<void> shutdown() async {
     _tick?.cancel();
     _tick = null;
@@ -119,9 +114,8 @@ class WsServer extends ChangeNotifier {
 
   @override
   void dispose() {
-    // Set first: shutdown() is async and its tail runs after super.dispose(),
-    // as do any in-flight socket and database callbacks. All of them route
-    // through _safeNotify, which goes quiet once this is set.
+    // Set first: async shutdown()/socket/db callbacks route through
+    // _safeNotify, which goes quiet once this is set.
     _disposed = true;
     shutdown();
     super.dispose();
@@ -134,8 +128,8 @@ class WsServer extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// This phone's address on the hotspot, shown so the operator can sanity-check
-  /// that the hotspot is actually up before blaming the nodes.
+  /// This phone's address on the hotspot, so the operator can confirm the
+  /// hotspot is up before blaming the nodes.
   Future<String?> _localIp() async {
     try {
       final ifaces = await NetworkInterface.list(
@@ -180,13 +174,10 @@ class WsServer extends ChangeNotifier {
   void _onDisconnect(String? nodeId, WebSocketChannel channel) {
     if (nodeId == null) return;
     final n = nodes[nodeId];
-    // A stale callback from a socket the node has already replaced must not tear
-    // down the new connection.
+    // Stale callback from a socket the node already replaced; ignore.
     if (n == null || !identical(n.channel, channel)) return;
     n.channel = null;
-    // Whatever it was playing is gone with the link. Reset the assembler (an
-    // interrupted tone is not a result and is not stored) so Play is not left
-    // greyed out forever.
+    // Interrupted tone is not a result; abandon it so Play isn't stuck disabled.
     if (n.awaitingResult) n.assembler.abandon('disconnected');
     n.resetPlayback();
     _pushEvent(LiveEvent(nodeId, null, 'Disconnected', StepFrom.init));
@@ -212,8 +203,8 @@ class WsServer extends ChangeNotifier {
 
       case 'heartbeat':
         n.state = msg['state'] as String? ?? 'IDLE';
-        // Only follow the node's level WHILE it is playing. An idle heartbeat
-        // must not overwrite the operator's set point for the next tone.
+        // Only follow the node's level while playing; an idle heartbeat must
+        // not overwrite the operator's set point for the next tone.
         if (n.state == 'PLAYING') {
           final d = _d(msg['current_db']);
           if (d != null) n.levelDb = d;
@@ -222,8 +213,8 @@ class WsServer extends ChangeNotifier {
         break;
 
       case 'pong':
-        // Clock-offset probe closing. Both stamps travelled the same round trip,
-        // so this is the only place the node's clock becomes comparable to ours.
+        // Clock-offset probe closing; this is where the node's clock becomes
+        // comparable to ours.
         final sent = _d(msg['t_app_ms']);
         final nodeMs = _d(msg['t_node_ms']);
         if (sent != null && nodeMs != null) {
@@ -236,8 +227,7 @@ class WsServer extends ChangeNotifier {
         return; // nothing user-visible changed
 
       case 'audio_latency':
-        // The node measured this locally (press -> first chunk at the new level),
-        // so it arrives ready to use, with no clock conversion needed.
+        // Node-measured locally (press -> first chunk); no clock conversion needed.
         final ms = _d(msg['ms']);
         if (ms != null) latency.add(nodeId, LatencyKind.audioApply, ms);
         return;
@@ -254,16 +244,14 @@ class WsServer extends ChangeNotifier {
         break;
 
       case 'volume_changed':
-        // seg_* describes the level that just ENDED -- one row in the records
-        // view. current_db is the new level the subject moved to; the control
-        // tracks it live.
+        // seg_* describes the level that just ended (one records-view row);
+        // current_db is the new level, tracked live by the control.
         final seq = _i(msg['seq']);
         final remaining = _d(msg['seg_remaining_s']) ?? 0;
         n.levelDb = _d(msg['current_db']) ?? n.levelDb;
 
-        // One-way press-to-phone latency, available only once the offset for this
-        // node is known -- before that the node's stamp cannot be placed on our
-        // timeline at all, so the sample is skipped rather than guessed.
+        // One-way press-to-phone latency; skipped, not guessed, until this
+        // node's clock offset is known.
         final tNode = _d(msg['t_node_ms']);
         if (tNode != null) {
           final pressedAppMs = latency.offsetFor(nodeId).toAppMs(tNode);
@@ -309,9 +297,7 @@ class WsServer extends ChangeNotifier {
           finalLinear: _d(msg['final_linear']),
           segRemainingS: remaining,
         );
-        // Only a tone that ran the countdown to the end is a real result. A tone
-        // the operator stopped early is discarded entirely -- it never reaches
-        // the history (per the operator's request).
+        // Only a completed countdown is a real result; an early stop is discarded.
         if (reason == 'completed') {
           _store(record?.copyWith(
               ambientPeakDb: ambientPeak, ambientOverLimit: ambientOver));
@@ -338,14 +324,14 @@ class WsServer extends ChangeNotifier {
         break;
 
       default:
-        // Unknown types are ignored, never fatal: a node may be a newer build.
+        // Unknown types ignored, not fatal: a node may be a newer build.
         debugPrint('[ws] unknown message type ${msg['type']} from $nodeId');
         return;
     }
     _safeNotify();
   }
 
-  /// Persist a finished test. Fire and forget: a slow disk write must not stall
+  /// Persist a finished test. Fire and forget so a slow write doesn't stall
   /// the message pump.
   void _store(TestRecord? record) {
     if (record == null) return;
@@ -362,9 +348,7 @@ class WsServer extends ChangeNotifier {
   /// Start a tone on one node using that node's own dialled-in parameters.
   void play(NodeSession n) {
     if (!n.online) return;
-    // Safety net: if a test is somehow still in flight when Play is pressed,
-    // discard the interrupted one -- it did not run to completion, so it is not
-    // a result.
+    // Safety net: discard any test still in flight when Play is pressed again.
     if (n.assembler.active) n.assembler.abandon('restarted');
 
     final seq = _nextSeq();
@@ -379,8 +363,7 @@ class WsServer extends ChangeNotifier {
       freqHz: n.frequency,
       ear: n.ear,
     );
-    // Open a fresh ambient window so the level stored with this result describes
-    // this test only, not the room's whole history.
+    // Fresh ambient window so the stored level describes this test only.
     ambient?.beginWindow();
     latency.noteCommandSent(n.nodeId, seq, _nowMs());
     _send(n, {
@@ -398,9 +381,8 @@ class WsServer extends ChangeNotifier {
     _send(n, {'type': 'stop', 'seq': n.activeSeq});
   }
 
-  /// Fan out to every selected node. This starts them together but does not make
-  /// them alike: each node is sent the parameters on its own card, so concurrent
-  /// subjects can be tested at different frequencies, levels and ears.
+  /// Fan out to every selected node, each with its own card's parameters, so
+  /// concurrent subjects can run different frequencies/levels/ears.
   void playSelected() {
     for (final n in nodes.values) {
       if (n.selected && n.online && !n.awaitingResult) play(n);
@@ -438,9 +420,7 @@ class WsServer extends ChangeNotifier {
     var changed = false;
     final now = DateTime.now();
 
-    // Clock-offset probe. Sent on the 1 Hz housekeeping tick rather than on its
-    // own timer so it cannot outlive the server, and only to nodes that are
-    // actually connected.
+    // Clock-offset probe, riding the 1 Hz tick so it can't outlive the server.
     if (now.difference(_lastClockProbe) >= _clockProbeEvery) {
       _lastClockProbe = now;
       for (final n in nodes.values) {
@@ -451,8 +431,7 @@ class WsServer extends ChangeNotifier {
     }
 
     for (final n in nodes.values) {
-      // Safety net only: normally tone_done re-enables Play. This covers a node
-      // that died mid-tone, so the operator is never stuck with a dead button.
+      // Safety net for a node that died mid-tone (normally tone_done re-enables Play).
       if (n.awaitingResult &&
           n.playSentAt != null &&
           now.difference(n.playSentAt!) > kPlayTimeout) {
@@ -466,20 +445,18 @@ class WsServer extends ChangeNotifier {
             StepFrom.down));
         changed = true;
       }
-      // Heartbeats stopped: the card should go grey even though the socket is
-      // technically still open.
+      // Heartbeats stopped: grey the card even though the socket is still open.
       if (n.channel != null && n.staleFor(kHeartbeatTimeout) && n.isPlaying) {
         n.state = 'IDLE';
         changed = true;
       }
-      // online is time-derived, so nothing else would tell us it flipped.
+      // online is time-derived; nothing else signals when it flips.
       if (n.online != n.lastKnownOnline) {
         n.lastKnownOnline = n.online;
         changed = true;
       }
     }
-    // Only repaint on a real transition. Repainting unconditionally at 1 Hz
-    // would fight with the operator typing into a card's number fields.
+    // Repaint only on a real transition, or 1 Hz repaints fight number-field typing.
     if (changed) _safeNotify();
   }
 

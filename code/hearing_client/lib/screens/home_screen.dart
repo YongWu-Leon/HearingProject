@@ -9,13 +9,11 @@ import '../widgets/node_card.dart';
 import 'latency_screen.dart';
 import 'records_screen.dart';
 
-/// Main screen: the hub status, one card per node, and a live event feed.
+/// Main screen: hub status, one card per node, and a live event feed.
 ///
-/// The phone no longer picks a board to talk to -- it IS the hub, and nodes
-/// appear here by themselves as they register on its hotspot. Each card holds
-/// its own frequency / volume / ear, so nodes can be driven independently
-/// (start node 1, then start node 2 on a different tone), or started together
-/// with Play All -- which still sends each node its own card's parameters.
+/// The phone is the hub; nodes register themselves on its hotspot. Each card
+/// holds its own frequency/volume/ear, so nodes run independently or
+/// together via Play All.
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
@@ -43,15 +41,14 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _boot() async {
-    // The foreground service must be up before the socket, or Android may kill
-    // the listener the moment the screen locks.
+    // Foreground service must start before the socket, or Android may kill
+    // the listener on screen lock.
     await Foreground.start(nodeCount: 0);
     await _server.start();
     if (mounted && !_server.running) {
       _showStatus('Server failed to start: ${_server.lastError}');
     }
-    // Ambient-noise monitoring is a best-effort helper; a denied mic permission
-    // just leaves the noise card showing a hint and never blocks screening.
+    // Best-effort: a denied mic permission just leaves a hint, never blocks screening.
     await _ambient.start();
   }
 
@@ -70,9 +67,7 @@ class _HomeScreenState extends State<HomeScreen> {
     super.dispose();
   }
 
-  // The old persistent status line at the bottom is gone; the live event feed
-  // covers activity. Kept as a hook so the card callbacks still have somewhere
-  // to report to (debug log only).
+  // Debug-only status hook for card callbacks (live event feed covers the UI).
   void _showStatus(String msg) => debugPrint('[ui] $msg');
 
   void _openRecords({String? nodeId}) {
@@ -150,7 +145,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // ---------- hub status + global controls ----------
+  // Hub status + global controls
 
   Widget _hubCard(List<NodeSession> nodes) {
     final online = nodes.where((n) => n.online).length;
@@ -242,7 +237,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // ---------- ambient noise (Kalman-smoothed) ----------
+  // Ambient noise (Kalman-smoothed)
 
   Widget _noiseCard() {
     final m = _ambient;
@@ -285,7 +280,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // ---------- empty state ----------
+  // Empty state
 
   Widget _emptyState() {
     return Container(
@@ -319,7 +314,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // ---------- live event feed ----------
+  // Live event feed
 
   Widget _eventFeed() {
     final events = _server.events.take(8).toList();
